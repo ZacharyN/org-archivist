@@ -227,9 +227,67 @@ class QueryResponse(BaseModel):
 - Extract text from various file formats
 - Classify documents by type
 - Split documents into semantic chunks
-- Generate embeddings for chunks
+- Generate embeddings for chunks (configurable provider)
 - Enrich metadata from content
 - Store in vector database
+
+**Embedding Model Configuration:**
+
+```python
+from enum import Enum
+from typing import Optional
+import openai
+from sentence_transformers import SentenceTransformer
+
+class EmbeddingProvider(Enum):
+    OPENAI = "openai"
+    VOYAGE = "voyage"
+    LOCAL = "local"
+
+class EmbeddingModelConfig:
+    """Configuration for different embedding models"""
+
+    MODELS = {
+        "openai-text-embedding-3-small": {
+            "provider": EmbeddingProvider.OPENAI,
+            "dimensions": 1536,
+            "max_tokens": 8191,
+            "cost_per_1k_tokens": 0.00002
+        },
+        "openai-text-embedding-3-large": {
+            "provider": EmbeddingProvider.OPENAI,
+            "dimensions": 3072,
+            "max_tokens": 8191,
+            "cost_per_1k_tokens": 0.00013
+        },
+        "voyage-large-2": {
+            "provider": EmbeddingProvider.VOYAGE,
+            "dimensions": 1536,
+            "max_tokens": 16000,
+            "cost_per_1k_tokens": 0.00012
+        },
+        "bge-large-en-v1.5": {
+            "provider": EmbeddingProvider.LOCAL,
+            "dimensions": 1024,
+            "max_tokens": 512,
+            "cost_per_1k_tokens": 0.0  # Free, runs locally
+        }
+    }
+
+    @classmethod
+    def get_embedding_model(cls, model_name: str):
+        """Factory method to get configured embedding model"""
+        config = cls.MODELS.get(model_name)
+        if not config:
+            raise ValueError(f"Unknown embedding model: {model_name}")
+
+        if config["provider"] == EmbeddingProvider.OPENAI:
+            return OpenAIEmbeddings(model=model_name)
+        elif config["provider"] == EmbeddingProvider.VOYAGE:
+            return VoyageEmbeddings(model=model_name)
+        else:
+            return SentenceTransformer(f"BAAI/{model_name}")
+```
 
 **Architecture:**
 
@@ -1335,16 +1393,29 @@ class CitationResult(BaseModel):
 **Schema:**
 
 ```python
-# Collection configuration
-collection_config = {
-    "vectors": {
-        "size": 1024,  # bge-large-en-v1.5 embedding size
-        "distance": "Cosine"  # Cosine similarity
-    },
-    "optimizers_config": {
-        "indexing_threshold": 10000
+# Collection configuration (dynamic based on embedding model)
+def get_collection_config(embedding_model: str):
+    """Get collection config based on selected embedding model"""
+
+    embedding_dimensions = {
+        "openai-text-embedding-3-small": 1536,
+        "openai-text-embedding-3-large": 3072,
+        "openai-text-embedding-ada-002": 1536,
+        "voyage-large-2": 1536,
+        "voyage-code-2": 1536,
+        "bge-large-en-v1.5": 1024,  # Local option
+        "bge-small-en-v1.5": 384,   # Faster local option
     }
-}
+
+    return {
+        "vectors": {
+            "size": embedding_dimensions.get(embedding_model, 1024),
+            "distance": "Cosine"  # Cosine similarity
+        },
+        "optimizers_config": {
+            "indexing_threshold": 10000
+        }
+    }
 
 # Point structure
 {

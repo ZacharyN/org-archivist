@@ -53,10 +53,10 @@ Vector DB   Claude API
 **Technology Stack:**
 - **Backend**: Python, FastAPI, LlamaIndex
 - **Vector Database**: Qdrant
-- **Embeddings**: BAAI/bge-large-en-v1.5 (local)
+- **Embeddings**: Configurable - OpenAI (text-embedding-3-small/large), Anthropic/Voyage, or BAAI/bge-large-en-v1.5 (local)
 - **LLM**: Anthropic Claude (Sonnet 4.5)
 - **Frontend**: Streamlit
-- **Metadata Storage**: PostgreSQL
+- **Metadata Storage**: PostgreSQL (with Alembic migrations)
 - **Deployment**: Docker, Docker Compose
 
 See [/context/architecture.md](/context/architecture.md) for detailed system design.
@@ -208,19 +208,95 @@ org-archivist/
 
 ## Roadmap
 
-**Phase 1 (Current):** MVP - Core functionality
+### Phase 1 (Current): MVP - Core Functionality
 - Document upload and processing
 - Basic retrieval and generation
 - Simple UI
+- Database migrations with Alembic
+- API versioning strategy
 
-**Phase 2:** Enhanced features
+### Phase 2: Enhanced RAG Features
+- **Advanced RAG Techniques**
+  - Query decomposition for complex multi-part questions
+  - Self-RAG/CRAG patterns for improved accuracy
+  - Hypothetical Document Embeddings (HyDE) for better retrieval
+  - Cross-encoder reranking with dedicated models
+- **Adaptive Chunking Strategy**
+  - Document-type specific chunking parameters
+  - Configurable chunk sizes and overlaps per document type
+  - Smart boundary detection based on document structure
 - Chat interface with multi-turn conversations
 - Advanced prompt management UI
 - Response versioning and comparison
-- Usage analytics
 
-**Phase 3:** Enterprise features
-- Multi-user support with authentication
-- Role-based access control
-- Audit logging
-- API access for integrations
+### Phase 3: Production Hardening
+- **Scalability Enhancements**
+  - Connection pooling for PostgreSQL
+  - Redis caching layer for frequently accessed data
+  - Queue system (Celery/RabbitMQ) for async document processing
+  - CDN integration for static assets
+- **Rate Limiting**
+  - API endpoint rate limiting with slowapi
+  - Per-user and per-IP limits
+  - Configurable rate limit tiers
+- **Async Processing**
+  - Background job queue for document processing
+  - Webhook notifications for long-running tasks
+  - Batch document upload processing
+- Usage analytics and monitoring
+
+### Phase 4: Observability & DevOps
+- **Comprehensive Monitoring**
+  - OpenTelemetry integration for distributed tracing
+  - Prometheus metrics for system monitoring
+  - Structured logging with correlation IDs
+  - LangSmith/Langfuse integration for LLM observability
+- **CI/CD Pipeline**
+  - Automated testing workflows
+  - Database migration validation
+  - Deployment automation
+  - Rollback strategies
+- **API Management**
+  - Version deprecation policy
+  - API documentation versioning
+  - Client SDK generation
+  - Breaking change notifications
+
+### Phase 5: Enterprise Features
+- **Authentication & Security**
+  - Multi-user support with SSO
+  - Role-based access control (RBAC)
+  - Document-level permissions
+  - Audit logging with retention policies
+- **Advanced Integrations**
+  - Webhook system for external integrations
+  - REST API for third-party access
+  - GraphQL endpoint option
+  - Export to common grant management platforms
+
+### Phase 6: Advanced Intelligence
+- **ML Enhancements**
+  - Custom embedding fine-tuning on organizational content
+  - Active learning from user feedback
+  - Automatic document classification
+  - Smart metadata extraction with NER
+- **Content Intelligence**
+  - Automatic grant opportunity matching
+  - Success prediction based on historical data
+  - Writing style analysis and recommendations
+  - Plagiarism and self-plagiarism detection
+
+### Future Considerations
+- **Multi-modal Support**
+  - Image and chart analysis from documents
+  - Table extraction and understanding
+  - Support for presentation files (PPTX)
+- **Collaboration Features**
+  - Real-time collaborative editing
+  - Comment and review workflows
+  - Version control integration
+- **Compliance & Governance**
+  - GDPR/CCPA compliance tools
+  - Data retention automation
+  - PII detection and redaction
+  - Compliance reporting
