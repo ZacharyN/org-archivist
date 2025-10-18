@@ -46,6 +46,9 @@ out/
 .vscode/
 *.code-workspace
 
+# Claude Code settings
+.claude/
+
 # Environment variables
 .env
 .env.local
