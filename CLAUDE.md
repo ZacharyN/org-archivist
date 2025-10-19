@@ -94,6 +94,7 @@ STOP and make sure you understand the project context and the project requiremen
 1. Full project context is located in the `/context/project-context.md` file. Review the context directory for complete information about the project.
 2. Full project requirements are in the `/context/requirements.md` directory. Review the requirements frequently to understand the functional and non-functional requirements of the project.
 3. Full project architecture is located in the `/context/architecture.md` file. Review the architecture before starting a development task to understand how the feature or function you are building fits into the overall design of the application.
+4. Documentation is located in the `/docs/` directory. Create documentation when requested and place it in this directory. Review `/docs/README.md` for the standards and expectations for documentation.
 
 ---
 
