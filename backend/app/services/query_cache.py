@@ -17,7 +17,7 @@ import time
 import threading
 from typing import List, Optional, Dict, Any
 from collections import OrderedDict
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import logging
 
 from app.services.retrieval_engine import RetrievalResult
@@ -133,17 +133,20 @@ class QueryCache:
             MD5 hash as cache key
         """
         # Build a dictionary of all parameters
+        # Normalize query: collapse all whitespace into single spaces
+        normalized_query = ' '.join(query.lower().split())
         params = {
-            "query": query.strip().lower(),  # Normalize query
+            "query": normalized_query,
             "top_k": top_k,
             "recency_weight": recency_weight
         }
 
         # Add filters if present
         if filters:
-            # Convert filters to dict, handling None values
+            # Convert Pydantic model to dict, handling None values
+            # Use model_dump() for Pydantic models (not asdict which is for dataclasses)
             filter_dict = {
-                k: v for k, v in asdict(filters).items()
+                k: v for k, v in filters.model_dump().items()
                 if v is not None
             }
             params["filters"] = filter_dict
