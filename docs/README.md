@@ -4,6 +4,10 @@ This directory contains technical documentation for the Org Archivist project, i
 
 ## Contents
 
+### Architecture Decisions & Implementation Guides
+
+- **[retrieval-engine-recency-weighting.md](retrieval-engine-recency-weighting.md)** - Comprehensive documentation of recency weighting implementation for the retrieval engine, including age-based multipliers, configuration options, testing strategy, and real-world scenarios
+
 ### Technical Issues & Solutions
 
 - **[bm25-okapi-zero-idf-issue.md](bm25-okapi-zero-idf-issue.md)** - Documents the BM25Okapi IDF calculation bug discovered during keyword search implementation and the solution (switching to BM25L)
