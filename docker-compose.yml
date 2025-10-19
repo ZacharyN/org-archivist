@@ -56,52 +56,72 @@ services:
       - org-archivist-network
 
   # =============================================================================
-  # FastAPI Backend (commented out - will be added in later task)
+  # FastAPI Backend
   # =============================================================================
-  # backend:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile
-  #   container_name: org-archivist-backend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "${BACKEND_PORT:-8000}:8000"
-  #   environment:
-  #     # API Keys
-  #     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-  #     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-  #     VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
-  #     # Embedding configuration
-  #     EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
-  #     EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-large-en-v1.5}
-  #     EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
-  #     # Database
-  #     DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-org_archivist}
-  #     # Qdrant
-  #     QDRANT_HOST: qdrant
-  #     QDRANT_PORT: 6333
-  #     QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME:-foundation_docs}
-  #     # Application
-  #     ENVIRONMENT: ${ENVIRONMENT:-development}
-  #     DEBUG: ${DEBUG:-true}
-  #     LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  #   volumes:
-  #     - ./backend:/app
-  #     - ./data/documents:/app/documents
-  #     - ./logs:/app/logs
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     qdrant:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
-  #   networks:
-  #     - org-archivist-network
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: org-archivist-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      # API Keys
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      # Embedding configuration
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-large-en-v1.5}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-org_archivist}
+      # Qdrant
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME:-foundation_docs}
+      # Claude Model Configuration
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      CLAUDE_TEMPERATURE: ${CLAUDE_TEMPERATURE:-0.7}
+      CLAUDE_MAX_TOKENS: ${CLAUDE_MAX_TOKENS:-4096}
+      # RAG Pipeline Configuration
+      CHUNK_SIZE: ${CHUNK_SIZE:-512}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-50}
+      TOP_K: ${TOP_K:-5}
+      VECTOR_SEARCH_WEIGHT: ${VECTOR_SEARCH_WEIGHT:-0.7}
+      KEYWORD_SEARCH_WEIGHT: ${KEYWORD_SEARCH_WEIGHT:-0.3}
+      RECENCY_WEIGHT: ${RECENCY_WEIGHT:-0.5}
+      # File Upload Configuration
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-10}
+      ALLOWED_FILE_EXTENSIONS: ${ALLOWED_FILE_EXTENSIONS:-.pdf,.docx,.txt}
+      # Application
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      # CORS Configuration
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8501,http://localhost:3000}
+    volumes:
+      # Mount backend code for development (hot reload)
+      - ./backend/app:/app/app
+      # Mount document storage
+      - ./data/documents:/app/documents
+      # Mount logs directory
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - org-archivist-network
 
   # =============================================================================
   # Streamlit Frontend (commented out - will be added in later task)
