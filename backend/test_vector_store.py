@@ -11,10 +11,15 @@ Tests:
 """
 import asyncio
 import sys
+import os
 from pathlib import Path
 
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Set mock mode to bypass API key validation for this test
+os.environ["MOCK_MODE"] = "true"
+os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-key-for-vector-store-testing"
 
 from app.services.vector_store import QdrantStore, VectorStoreConfig, VectorStoreFactory
 
@@ -29,7 +34,16 @@ async def test_vector_store():
     # Test 1: Create store and connection
     print("\n[Test 1] Creating QdrantStore...")
     try:
-        store = VectorStoreFactory.create_from_settings()
+        # Use localhost for testing from host machine
+        config = VectorStoreConfig(
+            host="localhost",
+            port=6333,
+            grpc_port=6334,
+            collection_name="test_collection",
+            vector_size=1024,
+            prefer_grpc=False  # Use HTTP for simplicity in testing
+        )
+        store = VectorStoreFactory.create_store(config)
         print("[OK] QdrantStore created successfully")
         print(f"  - Host: {store.config.host}:{store.config.port}")
         print(f"  - Collection: {store.config.collection_name}")

@@ -204,8 +204,31 @@ class QdrantStore:
             # Prepare points for batch upload
             points = []
             for chunk in chunks:
+                # Convert chunk_id to UUID if it's a string
+                chunk_id = chunk.get("chunk_id")
+                if chunk_id is None:
+                    # Generate new UUID
+                    point_id = str(uuid4())
+                elif isinstance(chunk_id, str):
+                    # Try to parse as UUID, or generate new one
+                    try:
+                        # If it's already a valid UUID string, use it
+                        from uuid import UUID
+                        UUID(chunk_id)
+                        point_id = chunk_id
+                    except ValueError:
+                        # Not a valid UUID, generate new one and store original in payload
+                        point_id = str(uuid4())
+                        # Store original chunk_id in payload for reference
+                        if "metadata" not in chunk:
+                            chunk["metadata"] = {}
+                        chunk["metadata"]["original_chunk_id"] = chunk_id
+                else:
+                    # Assume it's an integer or already UUID
+                    point_id = chunk_id
+
                 point = PointStruct(
-                    id=chunk.get("chunk_id", str(uuid4())),
+                    id=point_id,
                     vector=chunk["embedding"],
                     payload={
                         "text": chunk["text"],
