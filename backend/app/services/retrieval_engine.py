@@ -603,18 +603,101 @@ class RetrievalEngine:
         """
         Apply recency weighting to boost recent documents
 
-        Placeholder - will be implemented in task_order: 85
+        Uses year metadata to calculate document age and apply multipliers:
+        - Current year: 1.0x (no penalty)
+        - 1 year old: 0.95x
+        - 2 years old: 0.90x
+        - 3+ years old: 0.85x
+
+        Final score = original_score * (1 + recency_weight * (age_multiplier - 1))
 
         Args:
             results: Retrieved results
-            recency_weight: Weight for recency (0-1)
+            recency_weight: Weight for recency boost (0-1)
+                           0 = no recency weighting
+                           1 = full recency weighting
 
         Returns:
-            Results with adjusted scores
+            Results with adjusted scores, re-sorted
         """
-        # TODO: Implement recency weighting
-        logger.debug(f"Recency weighting called with weight={recency_weight} (placeholder)")
-        return results
+        if not results:
+            return results
+
+        # If recency_weight is 0, no adjustment needed
+        if recency_weight == 0:
+            logger.debug("Recency weight is 0, skipping recency adjustment")
+            return results
+
+        # Get current year
+        current_year = datetime.now().year
+
+        logger.debug(
+            f"Applying recency weighting (weight={recency_weight:.2f}, "
+            f"current_year={current_year})"
+        )
+
+        # Apply recency multipliers
+        weighted_results = []
+        for result in results:
+            # Extract year from metadata
+            doc_year = result.metadata.get("year")
+
+            # Default multiplier if year is missing
+            age_multiplier = 0.85  # Assume old if year is missing
+
+            if doc_year:
+                # Calculate age
+                age = current_year - doc_year
+
+                # Determine multiplier based on age
+                if age <= 0:
+                    # Current year or future (shouldn't happen, but handle it)
+                    age_multiplier = 1.0
+                elif age == 1:
+                    age_multiplier = 0.95
+                elif age == 2:
+                    age_multiplier = 0.90
+                else:
+                    # 3+ years old
+                    age_multiplier = 0.85
+
+            # Calculate weighted score
+            # Formula: score * (1 + recency_weight * (multiplier - 1))
+            # This interpolates between original score and recency-adjusted score
+            original_score = result.score
+            adjusted_score = original_score * (1 + recency_weight * (age_multiplier - 1))
+
+            # Create new result with adjusted score
+            weighted_result = RetrievalResult(
+                chunk_id=result.chunk_id,
+                text=result.text,
+                score=adjusted_score,
+                metadata={
+                    **result.metadata,
+                    "_original_score": original_score,
+                    "_age_multiplier": age_multiplier,
+                    "_recency_adjusted": True,
+                },
+                doc_id=result.doc_id,
+                chunk_index=result.chunk_index
+            )
+            weighted_results.append(weighted_result)
+
+            logger.debug(
+                f"Chunk {result.chunk_id}: year={doc_year}, "
+                f"age_multiplier={age_multiplier:.2f}, "
+                f"score {original_score:.4f} -> {adjusted_score:.4f}"
+            )
+
+        # Re-sort by adjusted scores
+        weighted_results.sort(key=lambda x: x.score, reverse=True)
+
+        logger.info(
+            f"Applied recency weighting to {len(weighted_results)} results "
+            f"(weight={recency_weight:.2f})"
+        )
+
+        return weighted_results
 
     def _diversify_results(
         self,
