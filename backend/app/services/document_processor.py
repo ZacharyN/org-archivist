@@ -98,7 +98,8 @@ class DocumentProcessor:
         self,
         vector_store,  # Will be VectorStore instance (to be implemented)
         embedding_model,  # Will be EmbeddingModel instance
-        node_parser,  # Will be NodeParser instance (LlamaIndex)
+        chunking_service=None,  # ChunkingService instance (recommended)
+        node_parser=None,  # DEPRECATED: Will be NodeParser instance (LlamaIndex)
     ):
         """
         Initialize document processor
@@ -106,11 +107,13 @@ class DocumentProcessor:
         Args:
             vector_store: Vector database client for storing embeddings
             embedding_model: Model for generating embeddings
-            node_parser: Chunking strategy implementation
+            chunking_service: ChunkingService instance for semantic chunking (recommended)
+            node_parser: DEPRECATED - Use chunking_service instead
         """
         self.vector_store = vector_store
         self.embedding_model = embedding_model
-        self.node_parser = node_parser
+        self.chunking_service = chunking_service
+        self.node_parser = node_parser  # Keep for backward compatibility
 
         # Registry of text extractors (to be populated with actual implementations)
         self._text_extractors: Dict[FileType, TextExtractor] = {}
@@ -335,7 +338,7 @@ class DocumentProcessor:
         """
         Split document into semantic chunks
 
-        Uses configured node_parser (e.g., SemanticSplitter from LlamaIndex)
+        Uses configured chunking service (ChunkingService with LlamaIndex)
 
         Args:
             text: Full document text
@@ -344,13 +347,35 @@ class DocumentProcessor:
         Returns:
             List of DocumentChunk objects
         """
-        # This will be implemented when we integrate LlamaIndex
-        # For now, return placeholder
+        # Use chunking service if available, otherwise fallback
+        if self.chunking_service:
+            try:
+                # Get chunks from chunking service
+                chunk_dicts = self.chunking_service.chunk_text(text, metadata)
 
-        # TODO: Implement actual chunking with node_parser
-        # nodes = self.node_parser.get_nodes_from_documents([Document(text=text)])
+                # Convert to DocumentChunk objects
+                chunks = []
+                doc_id = metadata.get('doc_id', 'unknown')
 
-        # Placeholder: simple chunking
+                for chunk_dict in chunk_dicts:
+                    chunk = DocumentChunk(
+                        chunk_id=f"{doc_id}_{chunk_dict['chunk_index']}",
+                        text=chunk_dict['text'],
+                        chunk_index=chunk_dict['chunk_index'],
+                        metadata=chunk_dict['metadata'],
+                        embedding=None
+                    )
+                    chunks.append(chunk)
+
+                logger.info(f"Chunked via ChunkingService: {len(chunks)} chunks created")
+                return chunks
+
+            except Exception as e:
+                logger.error(f"Chunking service failed: {e}, using fallback")
+                # Fall through to fallback chunking
+
+        # Fallback: simple chunking
+        logger.warning("Using fallback chunking (no chunking service available)")
         chunks = []
         chunk_size = 1000  # characters
 
@@ -409,6 +434,7 @@ class ProcessorFactory:
     def create_processor(
         vector_store=None,
         embedding_model=None,
+        chunking_service=None,
         node_parser=None
     ) -> DocumentProcessor:
         """
@@ -417,7 +443,8 @@ class ProcessorFactory:
         Args:
             vector_store: Optional vector store instance
             embedding_model: Optional embedding model instance
-            node_parser: Optional node parser instance
+            chunking_service: Optional ChunkingService instance (recommended)
+            node_parser: Optional node parser instance (deprecated)
 
         Returns:
             Configured DocumentProcessor instance
@@ -425,6 +452,7 @@ class ProcessorFactory:
         processor = DocumentProcessor(
             vector_store=vector_store,
             embedding_model=embedding_model,
+            chunking_service=chunking_service,
             node_parser=node_parser
         )
 
