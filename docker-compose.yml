@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # PostgreSQL Database
+  # =============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: org-archivist-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-org_archivist}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-org_archivist}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - org-archivist-network
+
+  # =============================================================================
+  # Qdrant Vector Database
+  # =============================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: org-archivist-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"      # HTTP API
+      - "${QDRANT_GRPC_PORT:-6334}:6334" # gRPC API
+    volumes:
+      - qdrant_storage:/qdrant/storage
+      - ./docker/qdrant/config:/qdrant/config:ro
+    environment:
+      # Qdrant configuration
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      # Optional: API key for Qdrant (if needed)
+      # QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:6333/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - org-archivist-network
+
+  # =============================================================================
+  # FastAPI Backend (commented out - will be added in later task)
+  # =============================================================================
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: org-archivist-backend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${BACKEND_PORT:-8000}:8000"
+  #   environment:
+  #     # API Keys
+  #     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  #     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  #     VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+  #     # Embedding configuration
+  #     EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+  #     EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-large-en-v1.5}
+  #     EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+  #     # Database
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-org_archivist}
+  #     # Qdrant
+  #     QDRANT_HOST: qdrant
+  #     QDRANT_PORT: 6333
+  #     QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME:-foundation_docs}
+  #     # Application
+  #     ENVIRONMENT: ${ENVIRONMENT:-development}
+  #     DEBUG: ${DEBUG:-true}
+  #     LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  #   volumes:
+  #     - ./backend:/app
+  #     - ./data/documents:/app/documents
+  #     - ./logs:/app/logs
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     qdrant:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
+  #   networks:
+  #     - org-archivist-network
+
+  # =============================================================================
+  # Streamlit Frontend (commented out - will be added in later task)
+  # =============================================================================
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: org-archivist-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${FRONTEND_PORT:-8501}:8501"
+  #   environment:
+  #     BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
+  #   volumes:
+  #     - ./frontend:/app
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:8501/_stcore/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
+  #   networks:
+  #     - org-archivist-network
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  org-archivist-network:
+    name: org-archivist-network
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+    name: org-archivist-postgres-data
+    driver: local
+  qdrant_storage:
+    name: org-archivist-qdrant-storage
+    driver: local
