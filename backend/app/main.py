@@ -73,6 +73,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register API routers
+from app.api import query
+
+app.include_router(query.router)
+
 
 # Health check endpoint
 @app.get("/api/health", tags=["System"])
