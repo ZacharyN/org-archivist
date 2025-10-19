@@ -16,18 +16,48 @@ def test_query_with_valid_request(client, sample_query_request):
     """Test query endpoint with valid request structure."""
     response = client.post("/api/query", json=sample_query_request)
 
-    # Should accept valid request (may return stub data)
-    assert response.status_code in [200, 201]
+    # Should accept valid request
+    assert response.status_code == 200
 
-    if response.status_code == 200:
-        data = response.json()
-        assert "query" in data or "response" in data or "sources" in data
+    data = response.json()
+    # Verify response structure
+    assert "text" in data
+    assert "sources" in data
+    assert "confidence" in data
+    assert "metadata" in data
+
+    # Verify sources structure
+    assert len(data["sources"]) > 0
+    source = data["sources"][0]
+    assert "id" in source
+    assert "filename" in source
+    assert "doc_type" in source
+    assert "excerpt" in source
+    assert "relevance" in source
+
+
+def test_query_retrieval_integration(client, mock_engine, sample_query_request):
+    """Test that query endpoint calls RetrievalEngine correctly."""
+    response = client.post("/api/query", json=sample_query_request)
+
+    assert response.status_code == 200
+
+    # Verify RetrievalEngine was called
+    assert mock_engine.retrieve_called
+    assert mock_engine.last_query == sample_query_request["query"]
+    assert mock_engine.last_top_k == sample_query_request["max_sources"]
 
 
 def test_query_required_fields(client):
     """Test that query requires necessary fields."""
     # Missing query field
-    response = client.post("/api/query", json={"audience": "federal_agency"})
+    response = client.post(
+        "/api/query",
+        json={
+            "audience": "Federal RFP",
+            "section": "Program Description"
+        }
+    )
 
     assert response.status_code == 422
 
@@ -37,29 +67,45 @@ def test_query_audience_validation(client):
     response = client.post(
         "/api/query",
         json={
-            "query": "Test query",
-            "audience": "federal_agency",
-            "max_results": 5
+            "query": "How do we demonstrate program impact?",
+            "audience": "invalid_audience",
+            "section": "Impact & Outcomes"
         }
     )
 
-    # Should accept valid audience
-    assert response.status_code in [200, 201]
+    # Should reject invalid audience
+    assert response.status_code == 422
 
 
-def test_query_max_results_validation(client):
-    """Test max_results parameter validation."""
+def test_query_section_validation(client):
+    """Test section field validation."""
     response = client.post(
         "/api/query",
         json={
-            "query": "Test query",
-            "audience": "federal_agency",
-            "max_results": 100  # Very large number
+            "query": "How do we demonstrate program impact?",
+            "audience": "Federal RFP",
+            "section": "Invalid Section"
         }
     )
 
-    # Should handle or validate max_results
-    assert response.status_code in [200, 201, 422]
+    # Should reject invalid section
+    assert response.status_code == 422
+
+
+def test_query_max_sources_validation(client):
+    """Test max_sources parameter validation."""
+    response = client.post(
+        "/api/query",
+        json={
+            "query": "Test query with many results needed",
+            "audience": "Foundation Grant",
+            "section": "Program Description",
+            "max_sources": 20  # Within valid range (1-15)
+        }
+    )
+
+    # Should reject (max is 15)
+    assert response.status_code == 422
 
 
 def test_streaming_endpoint_exists(client):
@@ -75,8 +121,10 @@ def test_streaming_with_valid_request(client, sample_query_request):
     response = client.post("/api/query/stream", json=sample_query_request)
 
     # Should accept request
-    # Streaming responses have status 200 even if they stream errors
-    assert response.status_code in [200, 201]
+    assert response.status_code == 200
+
+    # Check content type
+    assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
 
 
 def test_query_with_filters(client):
@@ -84,17 +132,18 @@ def test_query_with_filters(client):
     response = client.post(
         "/api/query",
         json={
-            "query": "Test query",
-            "audience": "foundation",
+            "query": "How do we demonstrate program effectiveness?",
+            "audience": "Foundation Grant",
+            "section": "Impact & Outcomes",
             "filters": {
-                "doc_type": ["successful_proposal"],
-                "year_range": [2020, 2024],
-                "program": ["Education"]
+                "doc_types": ["Grant Proposal"],
+                "date_range": (2020, 2024),
+                "programs": ["Education"]
             }
         }
     )
 
-    assert response.status_code in [200, 201]
+    assert response.status_code == 200
 
 
 def test_query_empty_string(client):
@@ -103,12 +152,13 @@ def test_query_empty_string(client):
         "/api/query",
         json={
             "query": "",
-            "audience": "federal_agency"
+            "audience": "Federal RFP",
+            "section": "Program Description"
         }
     )
 
-    # Should reject empty query
-    assert response.status_code == 422
+    # Should reject empty query (min_length=10)
+    assert response.status_code in [400, 422]
 
 
 def test_query_response_structure(client, sample_query_request):
