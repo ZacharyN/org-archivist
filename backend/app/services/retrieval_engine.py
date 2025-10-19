@@ -428,20 +428,172 @@ class RetrievalEngine:
         """
         Combine vector and keyword search results with weighted scoring
 
-        Placeholder - will be implemented in task_order: 87
+        Implements Reciprocal Rank Fusion (RRF) or weighted score combination.
+        Detects duplicates and combines scores from both methods.
 
         Args:
             vector_results: Results from vector search
             keyword_results: Results from keyword search
 
         Returns:
-            Combined and scored results
+            Combined and scored results sorted by final score
         """
-        # TODO: Implement hybrid scoring
-        logger.debug("Result combination called (placeholder)")
+        # If one result set is empty, return the other
+        if not vector_results and not keyword_results:
+            logger.warning("Both vector and keyword search returned empty results")
+            return []
 
-        # For now, just return vector results
-        return vector_results
+        if not vector_results:
+            logger.info("No vector results, returning keyword results only")
+            return keyword_results
+
+        if not keyword_results:
+            logger.info("No keyword results, returning vector results only")
+            return vector_results
+
+        # Step 1: Normalize scores to [0, 1] range for fair combination
+        vector_normalized = self._normalize_scores(vector_results)
+        keyword_normalized = self._normalize_scores(keyword_results)
+
+        logger.debug(
+            f"Normalized {len(vector_normalized)} vector results "
+            f"and {len(keyword_normalized)} keyword results"
+        )
+
+        # Step 2: Build a dictionary to track all unique chunks
+        # Key: chunk_id, Value: dict with vector_score, keyword_score, metadata, text
+        chunk_scores: Dict[str, Dict[str, Any]] = {}
+
+        # Add vector results
+        for result in vector_normalized:
+            chunk_scores[result.chunk_id] = {
+                "chunk_id": result.chunk_id,
+                "text": result.text,
+                "metadata": result.metadata,
+                "doc_id": result.doc_id,
+                "chunk_index": result.chunk_index,
+                "vector_score": result.score,
+                "keyword_score": 0.0,  # Will be updated if found in keyword results
+            }
+
+        # Add/update keyword results
+        for result in keyword_normalized:
+            if result.chunk_id in chunk_scores:
+                # Duplicate found - update keyword score
+                chunk_scores[result.chunk_id]["keyword_score"] = result.score
+                logger.debug(f"Duplicate chunk found: {result.chunk_id}")
+            else:
+                # New chunk only in keyword results
+                chunk_scores[result.chunk_id] = {
+                    "chunk_id": result.chunk_id,
+                    "text": result.text,
+                    "metadata": result.metadata,
+                    "doc_id": result.doc_id,
+                    "chunk_index": result.chunk_index,
+                    "vector_score": 0.0,
+                    "keyword_score": result.score,
+                }
+
+        logger.info(
+            f"Found {len(chunk_scores)} unique chunks "
+            f"({len(vector_results) + len(keyword_results) - len(chunk_scores)} duplicates)"
+        )
+
+        # Step 3: Calculate hybrid scores using weighted combination
+        combined_results = []
+        for chunk_id, scores in chunk_scores.items():
+            # Weighted combination: (vector_weight * vector_score) + (keyword_weight * keyword_score)
+            hybrid_score = (
+                self.config.vector_weight * scores["vector_score"] +
+                self.config.keyword_weight * scores["keyword_score"]
+            )
+
+            # Create combined result
+            combined_result = RetrievalResult(
+                chunk_id=scores["chunk_id"],
+                text=scores["text"],
+                score=hybrid_score,
+                metadata={
+                    **scores["metadata"],
+                    "_vector_score": scores["vector_score"],
+                    "_keyword_score": scores["keyword_score"],
+                    "_hybrid_score": hybrid_score,
+                },
+                doc_id=scores["doc_id"],
+                chunk_index=scores["chunk_index"]
+            )
+            combined_results.append(combined_result)
+
+        # Step 4: Sort by hybrid score (descending)
+        combined_results.sort(key=lambda x: x.score, reverse=True)
+
+        logger.info(
+            f"Combined results with hybrid scoring: "
+            f"{len(combined_results)} total chunks, "
+            f"top score: {combined_results[0].score:.4f}, "
+            f"weights: {self.config.vector_weight:.2f}v + {self.config.keyword_weight:.2f}k"
+        )
+
+        return combined_results
+
+    def _normalize_scores(self, results: List[RetrievalResult]) -> List[RetrievalResult]:
+        """
+        Normalize result scores to [0, 1] range using min-max normalization
+
+        This ensures vector and keyword scores are on the same scale
+        for fair hybrid combination.
+
+        Args:
+            results: List of results with scores
+
+        Returns:
+            Results with normalized scores
+        """
+        if not results:
+            return []
+
+        # Find min and max scores
+        scores = [r.score for r in results]
+        min_score = min(scores)
+        max_score = max(scores)
+
+        # Handle edge case where all scores are the same
+        if max_score == min_score:
+            # Set all scores to 1.0 (they're all equally relevant)
+            normalized_results = []
+            for result in results:
+                normalized_results.append(
+                    RetrievalResult(
+                        chunk_id=result.chunk_id,
+                        text=result.text,
+                        score=1.0,
+                        metadata=result.metadata,
+                        doc_id=result.doc_id,
+                        chunk_index=result.chunk_index
+                    )
+                )
+            return normalized_results
+
+        # Min-max normalization: (score - min) / (max - min)
+        normalized_results = []
+        for result in results:
+            normalized_score = (result.score - min_score) / (max_score - min_score)
+            normalized_results.append(
+                RetrievalResult(
+                    chunk_id=result.chunk_id,
+                    text=result.text,
+                    score=normalized_score,
+                    metadata=result.metadata,
+                    doc_id=result.doc_id,
+                    chunk_index=result.chunk_index
+                )
+            )
+
+        logger.debug(
+            f"Normalized scores from [{min_score:.4f}, {max_score:.4f}] to [0.0, 1.0]"
+        )
+
+        return normalized_results
 
     def _apply_recency_weight(
         self,
