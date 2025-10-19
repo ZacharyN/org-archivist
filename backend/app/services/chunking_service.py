@@ -24,7 +24,6 @@ from llama_index.core.node_parser import (
 )
 from llama_index.embeddings.openai import OpenAIEmbedding
 
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +81,9 @@ class ChunkingService:
     def _initialize_embedding_model(self):
         """Initialize embedding model for semantic chunking"""
         try:
+            # Import settings only when needed for semantic chunking
+            from app.config import settings
+
             # Use OpenAI embeddings for semantic similarity
             # Alternative: HuggingFaceEmbedding for local models
             self.embedding_model = OpenAIEmbedding(
@@ -251,6 +253,9 @@ class ChunkingServiceFactory:
         Returns:
             Configured ChunkingService instance
         """
+        # Import settings only when needed
+        from app.config import settings
+
         # Use strategy from settings if not provided
         if strategy is None:
             strategy_str = getattr(settings, 'CHUNKING_STRATEGY', 'semantic')
