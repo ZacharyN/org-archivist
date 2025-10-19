@@ -73,6 +73,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configure custom middleware and exception handlers
+from app.middleware import configure_middleware, configure_exception_handlers
+
+metrics_middleware = configure_middleware(app)
+configure_exception_handlers(app)
+
 # Register API routers
 from app.api import query, chat, prompts, config, documents
 
@@ -105,6 +111,18 @@ async def health_check() -> dict:
     }
 
 
+# Metrics endpoint
+@app.get("/api/metrics", tags=["System"])
+async def get_metrics() -> dict:
+    """
+    Get application metrics
+
+    Returns:
+        dict: Current metrics snapshot including request counts, error rates, and timing
+    """
+    return metrics_middleware.get_metrics()
+
+
 # Root endpoint
 @app.get("/", tags=["System"])
 async def root() -> dict:
@@ -117,23 +135,8 @@ async def root() -> dict:
         "description": "RAG-powered grant writing assistance",
         "docs_url": "/docs",
         "health_url": "/api/health",
+        "metrics_url": "/api/metrics",
     }
-
-
-# Global exception handler
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc: Exception) -> JSONResponse:
-    """
-    Global exception handler for uncaught errors
-    """
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal server error",
-            "detail": str(exc) if app.debug else "An unexpected error occurred",
-        },
-    )
 
 
 if __name__ == "__main__":
