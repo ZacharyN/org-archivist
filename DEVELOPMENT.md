@@ -277,8 +277,8 @@ SELECT COUNT(*) FROM documents;
 #### 3. Test Qdrant
 
 ```bash
-# Health check
-curl http://localhost:6333/health
+# Version check (root endpoint)
+curl http://localhost:6333/
 
 # List collections
 curl http://localhost:6333/collections
