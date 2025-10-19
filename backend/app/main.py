@@ -74,10 +74,11 @@ app.add_middleware(
 )
 
 # Register API routers
-from app.api import query, chat
+from app.api import query, chat, prompts
 
 app.include_router(query.router)
 app.include_router(chat.router)
+app.include_router(prompts.router)
 
 
 # Health check endpoint
