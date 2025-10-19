@@ -1,0 +1,70 @@
+# =============================================================================
+# Qdrant Vector Database Configuration
+# =============================================================================
+# This configuration file sets up Qdrant for the Org Archivist application.
+# It configures storage, networking, and performance settings.
+# =============================================================================
+
+service:
+  # HTTP API endpoint
+  http_port: 6333
+
+  # gRPC API endpoint (faster for bulk operations)
+  grpc_port: 6334
+
+  # Enable CORS for web-based clients
+  enable_cors: true
+
+  # Maximum request size (in bytes) - 100MB
+  max_request_size_mb: 100
+
+storage:
+  # Storage backend: 'disk' for persistent storage
+  storage_path: /qdrant/storage
+
+  # Performance tuning
+  performance:
+    # Maximum number of concurrent requests
+    max_search_threads: 0  # 0 = auto-detect based on CPU cores
+
+  # Optimization settings
+  optimizers:
+    # Number of vectors to index before optimization
+    indexing_threshold: 10000
+
+    # Flush interval in seconds
+    flush_interval_sec: 5
+
+    # Max number of vectors per segment
+    max_segment_size: 200000
+
+# Collection defaults (can be overridden per collection)
+collection:
+  # HNSW index parameters for vector search
+  hnsw_config:
+    # Number of edges per node in the graph
+    m: 16
+
+    # Size of the dynamic candidate list
+    ef_construct: 100
+
+    # Always use full scan for searches with this size or less
+    full_scan_threshold: 10000
+
+  # Quantization for reduced memory usage (optional)
+  # quantization:
+  #   scalar:
+  #     type: int8
+  #     quantile: 0.99
+
+# Cluster configuration (for future scaling)
+# cluster:
+#   enabled: false
+#   # p2p:
+#   #   port: 6335
+
+# Telemetry (optional - disable for privacy)
+telemetry_disabled: true
+
+# Logging
+log_level: INFO
