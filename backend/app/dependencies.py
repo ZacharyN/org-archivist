@@ -21,6 +21,7 @@ from app.services.vector_store import QdrantStore, VectorStoreConfig
 from app.services.retrieval_engine import RetrievalEngine, RetrievalConfig
 from app.services.query_cache import QueryCache, CachedRetrievalEngine
 from app.services.chunking_service import ChunkingService, ChunkingConfig
+from app.services.generation_service import GenerationService, GenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +204,31 @@ async def get_initialized_retrieval_engine() -> RetrievalEngine:
     return engine
 
 
+@lru_cache()
+def get_generation_service() -> GenerationService:
+    """
+    Get or create generation service instance (singleton)
+
+    Returns:
+        GenerationService instance for Claude API integration
+    """
+    settings = get_settings()
+
+    config = GenerationConfig(
+        model=settings.claude_model,
+        temperature=settings.claude_temperature,
+        max_tokens=settings.claude_max_tokens,
+        timeout=settings.claude_timeout_seconds,
+        max_retries=settings.claude_max_retries,
+        retry_delay=settings.claude_retry_delay_seconds
+    )
+
+    service = GenerationService(config)
+    logger.info(f"Generation service initialized: {settings.claude_model}")
+
+    return service
+
+
 # Dependency functions for FastAPI
 async def get_engine() -> RetrievalEngine:
     """
@@ -214,3 +240,15 @@ async def get_engine() -> RetrievalEngine:
             results = await engine.retrieve(...)
     """
     return await get_initialized_retrieval_engine()
+
+
+async def get_generator() -> GenerationService:
+    """
+    FastAPI dependency for generation service
+
+    Usage:
+        @app.get("/endpoint")
+        async def endpoint(generator: GenerationService = Depends(get_generator)):
+            result = await generator.generate(...)
+    """
+    return get_generation_service()

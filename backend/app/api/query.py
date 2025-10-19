@@ -17,7 +17,8 @@ import asyncio
 from ..models.query import QueryRequest, QueryResponse, Source, ResponseMetadata
 from ..models.common import ErrorResponse
 from ..services.retrieval_engine import RetrievalEngine, RetrievalResult
-from ..dependencies import get_engine
+from ..services.generation_service import GenerationService
+from ..dependencies import get_engine, get_generator
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,8 @@ def convert_results_to_sources(results: List[RetrievalResult]) -> List[Source]:
 )
 async def query_generate(
     request: QueryRequest,
-    engine: RetrievalEngine = Depends(get_engine)
+    engine: RetrievalEngine = Depends(get_engine),
+    generator: GenerationService = Depends(get_generator)
 ) -> QueryResponse:
     """
     Generate content using RAG (non-streaming).
@@ -132,51 +134,78 @@ async def query_generate(
                 detail=f"Retrieval failed: {str(e)}"
             )
 
-        # 3. Generate response using Claude (TODO: implement generation service)
+        # 3. Generate response using Claude API
         generation_start = time.time()
 
-        # STUB: Claude generation will be implemented in a separate task
-        # For now, create a stub response that shows the retrieved context
-        context_preview = "\n\n".join([
-            f"[{s.id}] {s.filename} ({s.doc_type}, {s.year}):\n{s.excerpt[:200]}..."
-            for s in sources[:3]
-        ])
+        try:
+            result = await generator.generate(
+                query=request.query,
+                sources=sources,
+                audience=request.audience,
+                section=request.section,
+                tone=request.tone,
+                include_citations=request.include_citations,
+                custom_instructions=request.custom_instructions,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
+            )
 
-        stub_text = f"""Based on the query "{request.query}", here is generated content for {request.audience} audience in {request.tone} tone.
+            generated_text = result["text"]
+            generation_time = result["generation_time"]
+            tokens_used = result["tokens_used"]
+            model = result["model"]
 
-This is a stub response showing that the RAG retrieval pipeline is working. The Claude generation service will be implemented in a separate task.
+            logger.info(
+                f"Generated {len(generated_text)} chars in {generation_time:.2f}s, "
+                f"{tokens_used} tokens used"
+            )
 
-Retrieved Context ({len(sources)} sources):
-{context_preview}
+        except Exception as e:
+            logger.error(f"Generation failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Generation failed: {str(e)}"
+            )
 
-The full response would include:
-- Audience-appropriate language ({request.audience})
-- Section-specific structure ({request.section})
-- Proper tone ({request.tone})
-- Content synthesized from the {len(sources)} retrieved sources
-- Inline citations {'[1], [2], etc.' if request.include_citations else '(citations disabled)'}
+        # 4. Validate citations and quality
+        quality_issues = []
 
-Note: The actual Claude API integration for content generation is pending implementation.
-"""
-        generation_time_ms = (time.time() - generation_start) * 1000
+        if request.include_citations:
+            citation_validation = generator.validate_citations(generated_text, sources)
 
-        # 4. Validate quality (TODO: implement quality validator)
-        # validator = get_quality_validator()
-        # validation = validator.validate(...)
+            if not citation_validation["valid"]:
+                quality_issues.append(
+                    f"Warning: Found {len(citation_validation['invalid_citations'])} "
+                    f"invalid citation(s)"
+                )
 
-        logger.info(f"Response generated in {generation_time_ms:.1f}ms")
+            if citation_validation["uncited_sources"]:
+                logger.debug(
+                    f"{len(citation_validation['uncited_sources'])} sources were not cited"
+                )
+
+        # Calculate confidence score based on various factors
+        # Simple heuristic: high if we have sources, citations are valid, and text is substantive
+        confidence = 0.8
+        if sources:
+            confidence += 0.1
+        if request.include_citations and citation_validation.get("total_citations", 0) > 0:
+            confidence += 0.05
+        if len(generated_text) > 200:
+            confidence += 0.05
+        confidence = min(confidence, 1.0)
+
+        logger.info(f"Response generated with confidence: {confidence:.2f}")
 
         return QueryResponse(
-            text=stub_text,
+            text=generated_text,
             sources=sources,
-            confidence=0.85,  # Stub confidence
-            quality_issues=[
-                "Note: Using stub generation. Claude API integration pending."
-            ],
+            confidence=confidence,
+            quality_issues=quality_issues if quality_issues else None,
             metadata=ResponseMetadata(
-                model="claude-sonnet-4.5-stub",
-                tokens_used=0,  # TODO: count actual tokens
-                generation_time=generation_time_ms / 1000,  # Convert to seconds
+                model=model,
+                tokens_used=tokens_used,
+                generation_time=generation_time,
                 temperature=request.temperature
             )
         )
@@ -193,7 +222,8 @@ Note: The actual Claude API integration for content generation is pending implem
 
 async def generate_stream(
     request: QueryRequest,
-    engine: RetrievalEngine
+    engine: RetrievalEngine,
+    generator: GenerationService
 ) -> AsyncIterator[str]:
     """
     Async generator for streaming responses.
@@ -203,6 +233,7 @@ async def generate_stream(
     Args:
         request: Query request parameters
         engine: RetrievalEngine instance
+        generator: GenerationService instance
     """
     try:
         logger.info(f"Streaming query request: {request.query[:100]}...")
@@ -238,46 +269,72 @@ async def generate_stream(
         # 2. Send metadata first
         metadata = {
             "type": "metadata",
-            "model": "claude-sonnet-4.5-stub",
+            "model": request.max_tokens,
             "sources_count": len(sources),
             "retrieval_time_ms": retrieval_time_ms
         }
         yield f"data: {json.dumps(metadata)}\n\n"
 
-        # 3. Stream generated content
-        # TODO: Implement actual Claude streaming API integration
-        # For now, show retrieved context in a streaming manner
+        # 3. Stream generated content using Claude API
+        full_text = ""
+        tokens_used = 0
+        model_name = ""
 
-        context_preview = f"""Based on the query "{request.query}", here is generated content for {request.audience} audience.
+        try:
+            async for event in generator.generate_stream(
+                query=request.query,
+                sources=sources,
+                audience=request.audience,
+                section=request.section,
+                tone=request.tone,
+                include_citations=request.include_citations,
+                custom_instructions=request.custom_instructions,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
+            ):
+                # Handle different event types from Claude streaming API
+                if event.type == "message_start":
+                    # Extract model info
+                    model_name = event.message.model
+                    logger.debug(f"Streaming started with model: {model_name}")
 
-This is a stub streaming response showing that RAG retrieval is working. The Claude streaming API integration will be implemented in a separate task.
+                elif event.type == "content_block_start":
+                    # Content block starting
+                    pass
 
-Retrieved {len(sources)} relevant sources:
+                elif event.type == "content_block_delta":
+                    # Stream text delta
+                    if hasattr(event.delta, 'text'):
+                        text_chunk = event.delta.text
+                        full_text += text_chunk
 
-"""
-        # Stream the intro
-        words = context_preview.split()
-        for i, word in enumerate(words):
-            chunk = {
-                "type": "content",
-                "text": word + " ",
-                "index": i
+                        chunk = {
+                            "type": "content",
+                            "text": text_chunk
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n"
+
+                elif event.type == "content_block_stop":
+                    # Content block complete
+                    pass
+
+                elif event.type == "message_delta":
+                    # Message metadata update (e.g., stop reason)
+                    if hasattr(event, 'usage'):
+                        tokens_used = event.usage.output_tokens
+
+                elif event.type == "message_stop":
+                    # Stream complete
+                    logger.info(f"Streaming complete: {len(full_text)} chars, {tokens_used} tokens")
+
+        except Exception as e:
+            logger.error(f"Streaming generation failed: {e}")
+            error = {
+                "type": "error",
+                "message": f"Generation failed: {str(e)}"
             }
-            yield f"data: {json.dumps(chunk)}\n\n"
-            await asyncio.sleep(0.01)  # Fast streaming for demo
-
-        # Stream each source preview
-        for source in sources[:3]:  # Show first 3 sources
-            source_text = f"\n\n[{source.id}] {source.filename} ({source.doc_type}, {source.year}):\n{source.excerpt[:200]}...\n"
-            words = source_text.split()
-            for word in words:
-                chunk = {
-                    "type": "content",
-                    "text": word + " ",
-                    "index": 0
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-                await asyncio.sleep(0.01)
+            yield f"data: {json.dumps(error)}\n\n"
+            return
 
         # Send sources metadata
         sources_data = {
@@ -297,13 +354,36 @@ Retrieved {len(sources)} relevant sources:
         }
         yield f"data: {json.dumps(sources_data)}\n\n"
 
+        # 4. Validate citations
+        quality_issues = []
+        citation_validation = {}
+
+        if request.include_citations:
+            citation_validation = generator.validate_citations(full_text, sources)
+
+            if not citation_validation["valid"]:
+                quality_issues.append(
+                    f"Warning: Found {len(citation_validation['invalid_citations'])} "
+                    f"invalid citation(s)"
+                )
+
+        # Calculate confidence score
+        confidence = 0.8
+        if sources:
+            confidence += 0.1
+        if request.include_citations and citation_validation.get("total_citations", 0) > 0:
+            confidence += 0.05
+        if len(full_text) > 200:
+            confidence += 0.05
+        confidence = min(confidence, 1.0)
+
         # Send completion event
         completion = {
             "type": "done",
-            "confidence": 0.85,
-            "quality_issues": [
-                "Note: Using stub generation. Claude streaming API integration pending."
-            ]
+            "confidence": confidence,
+            "quality_issues": quality_issues if quality_issues else None,
+            "tokens_used": tokens_used,
+            "model": model_name
         }
         yield f"data: {json.dumps(completion)}\n\n"
 
@@ -340,14 +420,15 @@ Retrieved {len(sources)} relevant sources:
 
     Each event is formatted as Server-Sent Event (SSE):
     ```
-    data: {"type": "content", "text": "chunk", "index": 0}
+    data: {"type": "content", "text": "chunk"}
 
     ```
     """,
 )
 async def query_generate_stream(
     request: QueryRequest,
-    engine: RetrievalEngine = Depends(get_engine)
+    engine: RetrievalEngine = Depends(get_engine),
+    generator: GenerationService = Depends(get_generator)
 ) -> StreamingResponse:
     """
     Generate content using RAG with streaming response.
@@ -373,7 +454,7 @@ async def query_generate_stream(
         logger.info(f"Starting streaming response for query: {request.query[:100]}...")
 
         return StreamingResponse(
-            generate_stream(request, engine),
+            generate_stream(request, engine, generator),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
