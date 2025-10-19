@@ -20,6 +20,7 @@ from collections import defaultdict
 
 from llama_index.core.embeddings import BaseEmbedding
 from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, Range
+from rank_bm25 import BM25L
 
 from app.models.query import QueryRequest
 from app.models.document import DocumentFilters
@@ -81,8 +82,11 @@ class RetrievalEngine:
         self.config = config or RetrievalConfig()
         self.reranker = reranker
 
-        # BM25 index (will be populated during keyword search implementation)
-        self._bm25_index = None
+        # BM25 index (will be populated when building index)
+        self._bm25_index: Optional[BM25L] = None
+        self._bm25_corpus: List[str] = []  # Original texts for retrieval
+        self._bm25_metadata: List[Dict[str, Any]] = []  # Metadata for each document
+        self._bm25_tokenized: List[List[str]] = []  # Tokenized corpus for indexing
 
         logger.info(
             f"RetrievalEngine initialized with config: "
@@ -341,7 +345,8 @@ class RetrievalEngine:
         """
         Perform BM25 keyword search
 
-        Placeholder - will be implemented in task_order: 89
+        Uses rank-bm25 library for efficient keyword-based retrieval.
+        Applies metadata filtering after BM25 scoring.
 
         Args:
             query: Query text
@@ -349,11 +354,71 @@ class RetrievalEngine:
             filters: Metadata filters
 
         Returns:
-            List of RetrievalResult objects
+            List of RetrievalResult objects sorted by BM25 score
         """
-        # TODO: Implement BM25 keyword search
-        logger.debug("Keyword search called (placeholder)")
-        return []
+        try:
+            # Check if BM25 index exists
+            if self._bm25_index is None or not self._bm25_corpus:
+                logger.warning("BM25 index not built. Building from vector store...")
+                await self._build_bm25_index()
+
+                if self._bm25_index is None:
+                    logger.warning("BM25 index still empty after build attempt")
+                    return []
+
+            # Tokenize query (same preprocessing as corpus)
+            tokenized_query = self._tokenize(query)
+
+            logger.debug(f"Query: '{query}' -> Tokens: {tokenized_query}")
+
+            if not tokenized_query:
+                logger.warning(f"Query tokenization resulted in empty tokens for query: '{query}'")
+                return []
+
+            # Get BM25 scores for all documents
+            doc_scores = self._bm25_index.get_scores(tokenized_query)
+
+            logger.debug(f"BM25 scores for {len(doc_scores)} documents: {doc_scores[:5] if len(doc_scores) > 5 else doc_scores}")
+
+            # Create list of (index, score, text, metadata) tuples
+            scored_docs = [
+                (i, score, self._bm25_corpus[i], self._bm25_metadata[i])
+                for i, score in enumerate(doc_scores)
+                if score > 0  # Only include documents with non-zero scores
+            ]
+
+            logger.debug(f"Found {len(scored_docs)} documents with non-zero scores")
+
+            # Sort by score descending
+            scored_docs.sort(key=lambda x: x[1], reverse=True)
+
+            # Apply metadata filtering if provided
+            if filters:
+                scored_docs = self._filter_bm25_results(scored_docs, filters)
+
+            # Take top-k results
+            scored_docs = scored_docs[:top_k]
+
+            # Convert to RetrievalResult objects
+            results = []
+            for idx, score, text, metadata in scored_docs:
+                result = RetrievalResult(
+                    chunk_id=metadata.get("chunk_id", f"bm25_{idx}"),
+                    text=text,
+                    score=float(score),
+                    metadata=metadata,
+                    doc_id=metadata.get("doc_id"),
+                    chunk_index=metadata.get("chunk_index")
+                )
+                results.append(result)
+
+            logger.info(f"BM25 keyword search returned {len(results)} results")
+            return results
+
+        except Exception as e:
+            logger.error(f"BM25 keyword search error: {e}", exc_info=True)
+            # Return empty results instead of failing
+            return []
 
     def _combine_results(
         self,
@@ -437,6 +502,14 @@ class RetrievalEngine:
         )
 
         return diversified
+
+    async def build_bm25_index(self):
+        """
+        Public method to manually build or rebuild BM25 index
+
+        Call this method after adding/removing documents to refresh the index.
+        """
+        await self._build_bm25_index()
 
     def _build_qdrant_filter(self, filters: DocumentFilters) -> Optional[Filter]:
         """
@@ -542,6 +615,174 @@ class RetrievalEngine:
         )
 
         return qdrant_filter
+
+    def _tokenize(self, text: str) -> List[str]:
+        """
+        Tokenize text for BM25 indexing/search
+
+        Applies basic preprocessing:
+        - Lowercase
+        - Remove punctuation
+        - Split on whitespace
+        - Filter out empty strings
+
+        Args:
+            text: Text to tokenize
+
+        Returns:
+            List of tokens
+        """
+        # Lowercase
+        text = text.lower()
+
+        # Remove punctuation and special characters
+        text = re.sub(r'[^\w\s]', ' ', text)
+
+        # Split on whitespace
+        tokens = text.split()
+
+        # Filter out empty strings
+        tokens = [t for t in tokens if t]
+
+        return tokens
+
+    async def _build_bm25_index(self):
+        """
+        Build BM25 index from vector store
+
+        Fetches all document chunks from Qdrant and builds BM25 index.
+        This should be called once during initialization or when documents are added.
+        """
+        try:
+            logger.info("Building BM25 index from vector store...")
+
+            # Fetch all documents from Qdrant
+            # Note: This is a simplified approach. For production, you'd want to:
+            # 1. Cache the BM25 index to disk
+            # 2. Update incrementally when documents are added/removed
+            # 3. Use a more efficient storage mechanism
+
+            # Get collection info to know how many points we have
+            collection_info = self.vector_store.client.get_collection(
+                collection_name=self.vector_store.collection_name
+            )
+
+            total_points = collection_info.points_count
+            logger.info(f"Total points in collection: {total_points}")
+
+            if total_points == 0:
+                logger.warning("No documents in vector store to build BM25 index")
+                return
+
+            # Scroll through all points (fetch in batches)
+            # Qdrant scroll API is efficient for large collections
+            offset = None
+            batch_size = 100
+
+            corpus = []
+            metadata_list = []
+            tokenized_corpus = []
+
+            while True:
+                # Scroll through points
+                results, next_offset = self.vector_store.client.scroll(
+                    collection_name=self.vector_store.collection_name,
+                    limit=batch_size,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False  # Don't need vectors for BM25
+                )
+
+                # Process batch
+                for point in results:
+                    text = point.payload.get("text", "")
+                    if text:
+                        corpus.append(text)
+
+                        # Extract metadata (exclude text field)
+                        metadata = {k: v for k, v in point.payload.items() if k != "text"}
+                        metadata["chunk_id"] = str(point.id)
+                        metadata_list.append(metadata)
+
+                        # Tokenize for BM25
+                        tokens = self._tokenize(text)
+                        tokenized_corpus.append(tokens)
+
+                # Check if we've reached the end
+                if next_offset is None:
+                    break
+
+                offset = next_offset
+
+            # Build BM25 index
+            if tokenized_corpus:
+                self._bm25_corpus = corpus
+                self._bm25_metadata = metadata_list
+                self._bm25_tokenized = tokenized_corpus
+                self._bm25_index = BM25L(tokenized_corpus)
+
+                logger.info(f"BM25 index built successfully with {len(corpus)} documents")
+            else:
+                logger.warning("No documents found to build BM25 index")
+
+        except Exception as e:
+            logger.error(f"Error building BM25 index: {e}", exc_info=True)
+
+    def _filter_bm25_results(
+        self,
+        scored_docs: List[Tuple[int, float, str, Dict[str, Any]]],
+        filters: DocumentFilters
+    ) -> List[Tuple[int, float, str, Dict[str, Any]]]:
+        """
+        Apply metadata filters to BM25 search results
+
+        Args:
+            scored_docs: List of (index, score, text, metadata) tuples
+            filters: DocumentFilters to apply
+
+        Returns:
+            Filtered list of scored documents
+        """
+        filtered = []
+
+        for idx, score, text, metadata in scored_docs:
+            # Check each filter condition
+            if filters.doc_types:
+                if metadata.get("doc_type") not in filters.doc_types:
+                    continue
+
+            if filters.years:
+                if metadata.get("year") not in filters.years:
+                    continue
+
+            if filters.date_range:
+                start_year, end_year = filters.date_range
+                doc_year = metadata.get("year")
+                if doc_year is None or not (start_year <= doc_year <= end_year):
+                    continue
+
+            if filters.programs:
+                # Programs stored as array, check if any program matches
+                doc_programs = metadata.get("programs", [])
+                if not any(p in doc_programs for p in filters.programs):
+                    continue
+
+            if filters.outcomes:
+                if metadata.get("outcome") not in filters.outcomes:
+                    continue
+
+            if filters.exclude_docs:
+                if metadata.get("doc_id") in filters.exclude_docs:
+                    continue
+
+            # Passed all filters
+            filtered.append((idx, score, text, metadata))
+
+        logger.debug(
+            f"Filtered BM25 results from {len(scored_docs)} to {len(filtered)}"
+        )
+
+        return filtered
 
     async def _rerank_results(
         self,

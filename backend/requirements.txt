@@ -30,6 +30,7 @@ llama-index-vector-stores-qdrant==0.3.3
 pypdf2==3.0.1
 python-docx==1.1.2
 chardet==5.2.0
+rank-bm25==0.2.2
 
 # Utilities
 python-dotenv==1.0.1
