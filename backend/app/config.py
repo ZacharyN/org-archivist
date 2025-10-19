@@ -231,6 +231,23 @@ class Settings(BaseSettings):
     )
 
     # =============================================================================
+    # Reranking Configuration
+    # =============================================================================
+
+    enable_reranking: bool = Field(
+        default=False,
+        description="Enable optional reranking with cross-encoder models"
+    )
+    reranker_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-2-v2",
+        description="Reranker model name (cross-encoder from sentence-transformers)"
+    )
+    reranker_top_n: Optional[int] = Field(
+        default=None,
+        description="Number of results after reranking (None = keep all)"
+    )
+
+    # =============================================================================
     # File Upload Configuration
     # =============================================================================
 

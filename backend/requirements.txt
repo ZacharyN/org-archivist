@@ -32,6 +32,10 @@ python-docx==1.1.2
 chardet==5.2.0
 rank-bm25==0.2.2
 
+# Optional: Reranking (install for reranking support)
+# Install with: pip install llama-index-postprocessor-sentence-transformer
+# llama-index-postprocessor-sentence-transformer>=0.2.0
+
 # Utilities
 python-dotenv==1.0.1
 httpx==0.27.2

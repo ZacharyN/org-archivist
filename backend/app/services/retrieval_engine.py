@@ -25,6 +25,7 @@ from rank_bm25 import BM25L
 from app.models.query import QueryRequest
 from app.models.document import DocumentFilters
 from app.services.vector_store import QdrantStore
+from app.services.reranker import Reranker
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class RetrievalEngine:
         vector_store: QdrantStore,
         embedding_model: BaseEmbedding,
         config: Optional[RetrievalConfig] = None,
-        reranker: Optional[Any] = None  # Future: reranking model
+        reranker: Optional[Reranker] = None
     ):
         """
         Initialize retrieval engine
@@ -75,7 +76,7 @@ class RetrievalEngine:
             vector_store: Qdrant vector store instance
             embedding_model: Embedding model for query encoding
             config: Optional retrieval configuration
-            reranker: Optional reranking model (for future use)
+            reranker: Optional Reranker instance for improving result quality
         """
         self.vector_store = vector_store
         self.embedding_model = embedding_model
@@ -1026,9 +1027,11 @@ class RetrievalEngine:
         top_k: int
     ) -> List[RetrievalResult]:
         """
-        Optional reranking of results
+        Optional reranking of results using cross-encoder models
 
-        Placeholder for future reranking implementation (task_order: 82)
+        Reranking analyzes query-document pairs at a deeper level using
+        cross-encoder models, providing more accurate relevance scores
+        than embedding similarity alone.
 
         Args:
             query: Original query
@@ -1036,11 +1039,59 @@ class RetrievalEngine:
             top_k: Number of results after reranking
 
         Returns:
-            Reranked results
+            Reranked results with updated scores
         """
-        # TODO: Implement reranking (optional)
-        logger.debug("Reranking called (placeholder)")
-        return results
+        if not self.reranker or not self.reranker.is_available():
+            logger.debug("Reranker not available, skipping reranking")
+            return results
+
+        if not results:
+            return results
+
+        try:
+            logger.info(f"Reranking {len(results)} results with top_k={top_k}")
+
+            # Convert RetrievalResult objects to dict format for reranker
+            result_dicts = []
+            for result in results:
+                result_dict = {
+                    "chunk_id": result.chunk_id,
+                    "text": result.text,
+                    "score": result.score,
+                    "metadata": result.metadata
+                }
+                result_dicts.append(result_dict)
+
+            # Rerank using cross-encoder
+            reranked_dicts = self.reranker.rerank(
+                query=query,
+                results=result_dicts,
+                top_n=top_k
+            )
+
+            # Convert back to RetrievalResult objects
+            reranked_results = []
+            for reranked_dict in reranked_dicts:
+                reranked_result = RetrievalResult(
+                    chunk_id=reranked_dict["chunk_id"],
+                    text=reranked_dict["text"],
+                    score=reranked_dict["score"],
+                    metadata=reranked_dict["metadata"],
+                    doc_id=reranked_dict["metadata"].get("doc_id"),
+                    chunk_index=reranked_dict["metadata"].get("chunk_index")
+                )
+                reranked_results.append(reranked_result)
+
+            logger.info(
+                f"Reranking complete: {len(results)} -> {len(reranked_results)} results"
+            )
+
+            return reranked_results
+
+        except Exception as e:
+            logger.error(f"Reranking error: {e}, returning original results", exc_info=True)
+            # Return original results on error (graceful degradation)
+            return results
 
 
 class RetrievalEngineFactory:
@@ -1051,7 +1102,7 @@ class RetrievalEngineFactory:
         vector_store: QdrantStore,
         embedding_model: BaseEmbedding,
         config: Optional[RetrievalConfig] = None,
-        reranker: Optional[Any] = None
+        reranker: Optional[Reranker] = None
     ) -> RetrievalEngine:
         """
         Create a RetrievalEngine with dependencies
@@ -1060,7 +1111,7 @@ class RetrievalEngineFactory:
             vector_store: Qdrant vector store instance
             embedding_model: Embedding model
             config: Optional retrieval configuration
-            reranker: Optional reranking model
+            reranker: Optional Reranker instance
 
         Returns:
             Configured RetrievalEngine instance
