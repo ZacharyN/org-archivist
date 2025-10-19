@@ -19,6 +19,7 @@ from datetime import datetime
 from collections import defaultdict
 
 from llama_index.core.embeddings import BaseEmbedding
+from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, Range
 
 from app.models.query import QueryRequest
 from app.models.document import DocumentFilters
@@ -264,21 +265,72 @@ class RetrievalEngine:
         filters: Optional[DocumentFilters] = None
     ) -> List[RetrievalResult]:
         """
-        Perform vector similarity search
-
-        Placeholder - will be implemented in next task
+        Perform vector similarity search using Qdrant
 
         Args:
             query_embedding: Query vector
             top_k: Number of results
-            filters: Metadata filters
+            filters: Document metadata filters
 
         Returns:
-            List of RetrievalResult objects
+            List of RetrievalResult objects sorted by relevance
         """
-        # TODO: Implement in next task (task_order: 91)
-        logger.debug("Vector search called (placeholder)")
-        return []
+        try:
+            # Build Qdrant filter from DocumentFilters
+            qdrant_filter = self._build_qdrant_filter(filters) if filters else None
+
+            # Call vector store search
+            search_results = await self.vector_store.search_similar(
+                query_vector=query_embedding,
+                limit=top_k,
+                score_threshold=None,  # No hard threshold, we'll apply ranking later
+                filter_conditions=None  # Direct filter not used, we use filter object
+            )
+
+            # If we have a filter, we need to use the client's search with filter
+            if qdrant_filter:
+                # Use the QdrantStore's client directly for filtered search
+                search_results = self.vector_store.client.search(
+                    collection_name=self.vector_store.collection_name,
+                    query_vector=query_embedding,
+                    limit=top_k,
+                    query_filter=qdrant_filter,
+                )
+
+                # Format results manually (same as search_similar does)
+                formatted_results = []
+                for result in search_results:
+                    formatted_results.append({
+                        "id": result.id,
+                        "score": result.score,
+                        "text": result.payload.get("text", ""),
+                        "metadata": {
+                            k: v for k, v in result.payload.items()
+                            if k != "text"
+                        }
+                    })
+                search_results = formatted_results
+
+            # Convert to RetrievalResult objects
+            retrieval_results = []
+            for result in search_results:
+                retrieval_result = RetrievalResult(
+                    chunk_id=str(result["id"]),
+                    text=result["text"],
+                    score=result["score"],
+                    metadata=result["metadata"],
+                    doc_id=result["metadata"].get("doc_id"),
+                    chunk_index=result["metadata"].get("chunk_index")
+                )
+                retrieval_results.append(retrieval_result)
+
+            logger.info(f"Vector search found {len(retrieval_results)} results")
+            return retrieval_results
+
+        except Exception as e:
+            logger.error(f"Vector search error: {e}", exc_info=True)
+            # Return empty results instead of failing the entire retrieval
+            return []
 
     async def _keyword_search(
         self,
@@ -385,6 +437,111 @@ class RetrievalEngine:
         )
 
         return diversified
+
+    def _build_qdrant_filter(self, filters: DocumentFilters) -> Optional[Filter]:
+        """
+        Build Qdrant Filter object from DocumentFilters
+
+        Supports filtering by:
+        - doc_types: List of document types
+        - years: List of specific years
+        - programs: List of programs
+        - outcomes: List of outcomes
+        - date_range: Tuple of (start_year, end_year)
+        - exclude_docs: List of document IDs to exclude
+
+        Args:
+            filters: DocumentFilters model
+
+        Returns:
+            Qdrant Filter object or None if no filters
+        """
+        if not filters:
+            return None
+
+        must_conditions = []
+        must_not_conditions = []
+
+        # Filter by document types (e.g., ["Grant Proposal", "Annual Report"])
+        if filters.doc_types:
+            must_conditions.append(
+                FieldCondition(
+                    key="doc_type",
+                    match=MatchAny(any=filters.doc_types)
+                )
+            )
+
+        # Filter by specific years (e.g., [2022, 2023, 2024])
+        if filters.years:
+            must_conditions.append(
+                FieldCondition(
+                    key="year",
+                    match=MatchAny(any=filters.years)
+                )
+            )
+
+        # Filter by year range (e.g., (2020, 2024))
+        if filters.date_range:
+            start_year, end_year = filters.date_range
+            must_conditions.append(
+                FieldCondition(
+                    key="year",
+                    range=Range(
+                        gte=start_year,
+                        lte=end_year
+                    )
+                )
+            )
+
+        # Filter by programs (e.g., ["Early Childhood", "Youth Development"])
+        # Note: Programs are stored as arrays, need to check if program is in array
+        if filters.programs:
+            # For array fields, we match if ANY of the filter values are in the field
+            for program in filters.programs:
+                must_conditions.append(
+                    FieldCondition(
+                        key="programs",
+                        match=MatchAny(any=[program])
+                    )
+                )
+
+        # Filter by outcomes (e.g., ["Funded", "Pending"])
+        if filters.outcomes:
+            must_conditions.append(
+                FieldCondition(
+                    key="outcome",
+                    match=MatchAny(any=filters.outcomes)
+                )
+            )
+
+        # Exclude specific documents
+        if filters.exclude_docs:
+            for doc_id in filters.exclude_docs:
+                must_not_conditions.append(
+                    FieldCondition(
+                        key="doc_id",
+                        match=MatchValue(value=doc_id)
+                    )
+                )
+
+        # Build final filter
+        if not must_conditions and not must_not_conditions:
+            return None
+
+        filter_kwargs = {}
+        if must_conditions:
+            filter_kwargs["must"] = must_conditions
+        if must_not_conditions:
+            filter_kwargs["must_not"] = must_not_conditions
+
+        qdrant_filter = Filter(**filter_kwargs)
+
+        logger.debug(
+            f"Built Qdrant filter: {len(must_conditions)} must conditions, "
+            f"{len(must_not_conditions)} must_not conditions"
+        )
+
+        return qdrant_filter
 
     async def _rerank_results(
         self,
