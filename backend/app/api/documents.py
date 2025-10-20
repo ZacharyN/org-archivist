@@ -10,10 +10,11 @@ This module provides endpoints for document upload and management:
 """
 
 from typing import Optional
-from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Query, status
-from uuid import uuid4
+from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Query, status, Depends
+from uuid import uuid4, UUID
 from datetime import datetime
 import json
+import logging
 
 from ..models.document import (
     DocumentMetadata,
@@ -24,12 +25,12 @@ from ..models.document import (
     DocumentStats,
 )
 from ..models.common import ErrorResponse
+from ..dependencies import get_processor, get_database
+from ..services.document_processor import DocumentProcessor
+from ..services.database import DatabaseService
 
 router = APIRouter(prefix="/api/documents", tags=["Document Management"])
-
-
-# In-memory document storage (TODO: Replace with database)
-documents_store = {}
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -63,6 +64,8 @@ documents_store = {}
 async def upload_document(
     file: UploadFile = File(..., description="Document file (PDF, DOCX, TXT)"),
     metadata: str = Form(..., description="Document metadata as JSON string"),
+    processor: DocumentProcessor = Depends(get_processor),
+    db: DatabaseService = Depends(get_database),
 ) -> DocumentUploadResponse:
     """
     Upload and process a document.
@@ -70,6 +73,8 @@ async def upload_document(
     Args:
         file: Uploaded file
         metadata: JSON string with DocumentMetadata
+        processor: Document processor service (injected)
+        db: Database service (injected)
 
     Returns:
         DocumentUploadResponse with doc_id and processing details
@@ -77,6 +82,9 @@ async def upload_document(
     Raises:
         HTTPException: If file is invalid or processing fails
     """
+    start_time = datetime.utcnow()
+    logger.info(f"Starting document upload: {file.filename}")
+
     try:
         # Parse metadata
         try:
@@ -94,69 +102,112 @@ async def upload_document(
             )
 
         # Validate file type
-        allowed_types = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"]
+        allowed_types = [
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/plain"
+        ]
         allowed_extensions = [".pdf", ".docx", ".txt"]
 
-        if file.content_type not in allowed_types and not any(file.filename.endswith(ext) for ext in allowed_extensions):
+        if file.content_type not in allowed_types and not any(
+            file.filename.endswith(ext) for ext in allowed_extensions
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unsupported file type. Allowed: PDF, DOCX, TXT"
             )
 
-        # TODO: Check file size
-        # if file.size > MAX_FILE_SIZE:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-        #         detail=f"File too large. Maximum: {MAX_FILE_SIZE} bytes"
-        #     )
-
         # Read file content
         content = await file.read()
         file_size = len(content)
 
-        # Generate document ID
-        doc_id = str(uuid4())
+        # Check file size (10MB limit)
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File too large ({file_size} bytes). Maximum: {MAX_FILE_SIZE} bytes (10MB)"
+            )
 
-        # TODO: Implement actual document processing
-        # 1. Extract text
-        # processor = get_document_processor()
-        # text = await processor.extract_text(content, file.filename)
+        if file_size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File is empty"
+            )
 
-        # 2. Process document
-        # result = await processor.process_document(
-        #     file_content=content,
-        #     filename=file.filename,
-        #     metadata=doc_metadata.dict()
-        # )
+        logger.info(f"Processing document: {file.filename} ({file_size} bytes)")
 
-        # Stub: Simulate processing
-        chunks_created = 12  # Simulated chunk count
-
-        # Store document info
-        documents_store[doc_id] = DocumentInfo(
-            doc_id=doc_id,
+        # Process document through full pipeline
+        # This includes: text extraction -> chunking -> embedding -> vector storage
+        result = await processor.process_document(
+            file_content=content,
             filename=file.filename,
-            doc_type=doc_metadata.doc_type,
-            year=doc_metadata.year,
-            programs=doc_metadata.programs,
-            tags=doc_metadata.tags,
-            outcome=doc_metadata.outcome,
-            chunks_count=chunks_created,
-            upload_date=datetime.utcnow(),
-            file_size=file_size,
+            metadata=doc_metadata.model_dump()
+        )
+
+        if not result.success:
+            logger.error(f"Document processing failed: {result.error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Document processing failed: {result.error}"
+            )
+
+        doc_id = UUID(result.doc_id)
+        logger.info(
+            f"Document processed successfully: {doc_id} "
+            f"({result.chunks_created} chunks created)"
+        )
+
+        # Save document metadata to PostgreSQL
+        try:
+            await db.insert_document(
+                doc_id=doc_id,
+                filename=file.filename,
+                doc_type=doc_metadata.doc_type,
+                year=doc_metadata.year,
+                outcome=doc_metadata.outcome,
+                notes=doc_metadata.notes,
+                file_size=file_size,
+                chunks_count=result.chunks_created,
+                programs=doc_metadata.programs,
+                tags=doc_metadata.tags,
+                created_by=None,  # TODO: Add user authentication
+            )
+            logger.info(f"Document metadata saved to database: {doc_id}")
+        except Exception as db_error:
+            logger.error(f"Failed to save document metadata: {db_error}")
+            # Attempt to clean up vector store
+            try:
+                from ..services.vector_store import get_vector_store
+                vector_store = get_vector_store()
+                await vector_store.delete_document(str(doc_id))
+                logger.info(f"Cleaned up vector store after database failure: {doc_id}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to cleanup vector store: {cleanup_error}")
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save document metadata: {str(db_error)}"
+            )
+
+        elapsed = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(
+            f"Document upload complete: {doc_id} "
+            f"(elapsed: {elapsed:.2f}s)"
         )
 
         return DocumentUploadResponse(
             success=True,
-            doc_id=doc_id,
+            doc_id=str(doc_id),
             filename=file.filename,
-            chunks_created=chunks_created,
-            message=f"Document '{file.filename}' uploaded and processed successfully"
+            chunks_created=result.chunks_created,
+            message=result.message
         )
 
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Unexpected error during document upload: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document processing failed: {str(e)}"
@@ -192,6 +243,7 @@ async def list_documents(
     search: Optional[str] = Query(None, description="Search in filename"),
     skip: int = Query(0, ge=0, description="Number to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum to return"),
+    db: DatabaseService = Depends(get_database),
 ) -> DocumentListResponse:
     """
     List documents with optional filtering.
@@ -199,44 +251,68 @@ async def list_documents(
     Args:
         doc_type: Filter by document type
         year: Filter by year
-        program: Filter by program
+        program: Filter by program (not implemented yet - requires join)
         outcome: Filter by outcome
         search: Search term for filename
         skip: Pagination offset
         limit: Page size
+        db: Database service (injected)
 
     Returns:
         DocumentListResponse with filtered documents
     """
-    documents = list(documents_store.values())
+    try:
+        # Get documents from database
+        documents_list = await db.list_documents(
+            skip=skip,
+            limit=limit,
+            doc_type=doc_type,
+            year=year,
+            outcome=outcome,
+            search=search,
+        )
 
-    # Apply filters
-    if doc_type:
-        documents = [d for d in documents if d.doc_type == doc_type]
+        # TODO: Implement program filtering (requires JOIN with document_programs)
+        # For now, filter in memory if program is specified
+        if program:
+            documents_list = [
+                doc for doc in documents_list
+                if program in doc.get("programs", [])
+            ]
 
-    if year:
-        documents = [d for d in documents if d.year == year]
+        # Get total count
+        stats = await db.get_stats()
+        total = stats["total_documents"]
 
-    if program:
-        documents = [d for d in documents if program in d.programs]
+        # Convert to DocumentInfo models
+        documents = [
+            DocumentInfo(
+                doc_id=doc["doc_id"],
+                filename=doc["filename"],
+                doc_type=doc["doc_type"],
+                year=doc["year"],
+                programs=doc.get("programs", []),
+                tags=doc.get("tags", []),
+                outcome=doc["outcome"],
+                chunks_count=doc["chunks_count"],
+                upload_date=datetime.fromisoformat(doc["upload_date"]),
+                file_size=doc["file_size"],
+            )
+            for doc in documents_list
+        ]
 
-    if outcome:
-        documents = [d for d in documents if d.outcome == outcome]
+        return DocumentListResponse(
+            documents=documents,
+            total=total,
+            filtered=len(documents),
+        )
 
-    if search:
-        search_lower = search.lower()
-        documents = [d for d in documents if search_lower in d.filename.lower()]
-
-    filtered_count = len(documents)
-
-    # Apply pagination
-    documents = documents[skip : skip + limit]
-
-    return DocumentListResponse(
-        documents=documents,
-        total=len(documents_store),
-        filtered=filtered_count,
-    )
+    except Exception as e:
+        logger.error(f"Failed to list documents: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve documents: {str(e)}"
+        )
 
 
 @router.get(
@@ -256,55 +332,36 @@ async def list_documents(
     Useful for dashboard displays and library health monitoring.
     """,
 )
-async def get_stats() -> DocumentStats:
+async def get_stats(
+    db: DatabaseService = Depends(get_database),
+) -> DocumentStats:
     """
     Get document library statistics.
+
+    Args:
+        db: Database service (injected)
 
     Returns:
         DocumentStats with library statistics
     """
-    documents = list(documents_store.values())
+    try:
+        stats = await db.get_stats()
 
-    if not documents:
         return DocumentStats(
-            total_documents=0,
-            total_chunks=0,
-            by_type={},
-            by_year={},
-            by_outcome={},
-            avg_chunks_per_doc=0.0,
+            total_documents=stats["total_documents"],
+            total_chunks=stats["total_chunks"],
+            by_type=stats["by_type"],
+            by_year=stats["by_year"],
+            by_outcome=stats["by_outcome"],
+            avg_chunks_per_doc=stats["avg_chunks_per_doc"],
         )
 
-    # Calculate statistics
-    total_documents = len(documents)
-    total_chunks = sum(d.chunks_count for d in documents)
-
-    # Count by type
-    by_type = {}
-    for doc in documents:
-        by_type[doc.doc_type] = by_type.get(doc.doc_type, 0) + 1
-
-    # Count by year
-    by_year = {}
-    for doc in documents:
-        by_year[doc.year] = by_year.get(doc.year, 0) + 1
-
-    # Count by outcome
-    by_outcome = {}
-    for doc in documents:
-        by_outcome[doc.outcome] = by_outcome.get(doc.outcome, 0) + 1
-
-    # Calculate average
-    avg_chunks = total_chunks / total_documents if total_documents > 0 else 0.0
-
-    return DocumentStats(
-        total_documents=total_documents,
-        total_chunks=total_chunks,
-        by_type=by_type,
-        by_year=by_year,
-        by_outcome=by_outcome,
-        avg_chunks_per_doc=round(avg_chunks, 2),
-    )
+    except Exception as e:
+        logger.error(f"Failed to get stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve statistics: {str(e)}"
+        )
 
 
 @router.get(
@@ -316,12 +373,16 @@ async def get_stats() -> DocumentStats:
     summary="Get document details",
     description="Retrieve detailed information about a specific document",
 )
-async def get_document(doc_id: str) -> DocumentInfo:
+async def get_document(
+    doc_id: str,
+    db: DatabaseService = Depends(get_database),
+) -> DocumentInfo:
     """
     Get document details by ID.
 
     Args:
         doc_id: Document identifier
+        db: Database service (injected)
 
     Returns:
         DocumentInfo with full document details
@@ -329,13 +390,44 @@ async def get_document(doc_id: str) -> DocumentInfo:
     Raises:
         HTTPException: If document not found
     """
-    if doc_id not in documents_store:
+    try:
+        doc_uuid = UUID(doc_id)
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Document {doc_id} not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid document ID format: {doc_id}"
         )
 
-    return documents_store[doc_id]
+    try:
+        doc = await db.get_document(doc_uuid)
+
+        if not doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document {doc_id} not found"
+            )
+
+        return DocumentInfo(
+            doc_id=doc["doc_id"],
+            filename=doc["filename"],
+            doc_type=doc["doc_type"],
+            year=doc["year"],
+            programs=doc.get("programs", []),
+            tags=doc.get("tags", []),
+            outcome=doc["outcome"],
+            chunks_count=doc["chunks_count"],
+            upload_date=datetime.fromisoformat(doc["upload_date"]),
+            file_size=doc["file_size"],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get document {doc_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve document: {str(e)}"
+        )
 
 
 @router.delete(
@@ -355,12 +447,16 @@ async def get_document(doc_id: str) -> DocumentInfo:
     This action cannot be undone.
     """,
 )
-async def delete_document(doc_id: str) -> dict:
+async def delete_document(
+    doc_id: str,
+    db: DatabaseService = Depends(get_database),
+) -> dict:
     """
     Delete a document.
 
     Args:
         doc_id: Document identifier
+        db: Database service (injected)
 
     Returns:
         Success message
@@ -368,36 +464,55 @@ async def delete_document(doc_id: str) -> dict:
     Raises:
         HTTPException: If document not found or deletion fails
     """
-    if doc_id not in documents_store:
+    try:
+        doc_uuid = UUID(doc_id)
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Document {doc_id} not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid document ID format: {doc_id}"
         )
 
     try:
-        document = documents_store[doc_id]
+        # Get document info before deletion
+        doc = await db.get_document(doc_uuid)
 
-        # TODO: Delete from vector database
-        # vector_store = get_vector_store()
-        # await vector_store.delete_by_doc_id(doc_id)
+        if not doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document {doc_id} not found"
+            )
 
-        # TODO: Delete file from storage if applicable
-        # file_storage = get_file_storage()
-        # await file_storage.delete(doc_id)
+        filename = doc["filename"]
+        chunks_count = doc["chunks_count"]
 
-        # Delete from metadata store
-        del documents_store[doc_id]
+        # Delete from vector database
+        from ..dependencies import get_vector_store
+        vector_store = get_vector_store()
+        await vector_store.delete_document(doc_id)
+        logger.info(f"Deleted chunks from vector store: {doc_id}")
+
+        # Delete from PostgreSQL
+        deleted = await db.delete_document(doc_uuid)
+
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document {doc_id} not found"
+            )
+
+        logger.info(f"Deleted document from database: {doc_id}")
 
         return {
             "success": True,
-            "message": f"Document '{document.filename}' deleted successfully",
+            "message": f"Document '{filename}' deleted successfully",
             "doc_id": doc_id,
-            "chunks_deleted": document.chunks_count,
+            "chunks_deleted": chunks_count,
         }
 
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to delete document {doc_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Document deletion failed: {str(e)}"

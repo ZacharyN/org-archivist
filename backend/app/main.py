@@ -26,10 +26,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Org Archivist backend...")
     logger.info("Initializing services...")
 
-    # TODO: Initialize database connections
-    # TODO: Initialize Qdrant client
-    # TODO: Load embedding model
-    # TODO: Initialize Claude client
+    # Initialize database connection pool
+    from app.services.database import get_database_service
+    db = get_database_service()
+    await db.connect()
+    logger.info("Database connection pool initialized")
+
+    # Initialize other services (lazy-loaded on first use)
+    # - Vector store (Qdrant)
+    # - Embedding model
+    # - Claude client
+    # These will be initialized when first endpoint is called
 
     logger.info("Backend started successfully")
 
@@ -38,9 +45,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("Shutting down Org Archivist backend...")
 
-    # TODO: Close database connections
-    # TODO: Close Qdrant client
-    # TODO: Cleanup resources
+    # Close database connections
+    await db.disconnect()
+    logger.info("Database connection pool closed")
+
+    # Other resources are cleaned up automatically
 
     logger.info("Backend shut down complete")
 

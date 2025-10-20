@@ -22,6 +22,11 @@ from app.services.retrieval_engine import RetrievalEngine, RetrievalConfig
 from app.services.query_cache import QueryCache, CachedRetrievalEngine
 from app.services.chunking_service import ChunkingService, ChunkingConfig
 from app.services.generation_service import GenerationService, GenerationConfig
+from app.services.database import DatabaseService, get_database_service
+from app.services.document_processor import DocumentProcessor, ProcessorFactory, FileType
+from app.services.extractors.pdf_extractor import PDFExtractor
+from app.services.extractors.docx_extractor import DOCXExtractor
+from app.services.extractors.txt_extractor import TXTExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -252,3 +257,91 @@ async def get_generator() -> GenerationService:
             result = await generator.generate(...)
     """
     return get_generation_service()
+
+
+@lru_cache()
+def get_chunking_service() -> ChunkingService:
+    """
+    Get or create chunking service instance (singleton)
+
+    Returns:
+        ChunkingService instance for semantic chunking
+    """
+    settings = get_settings()
+
+    # Create chunking config from settings
+    config = ChunkingConfig(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+    )
+
+    # Create chunking service (will use sentence strategy by default)
+    from app.services.chunking_service import ChunkingServiceFactory
+    service = ChunkingServiceFactory.create_service()
+
+    logger.info(f"Chunking service initialized: chunk_size={config.chunk_size}, overlap={config.chunk_overlap}")
+
+    return service
+
+
+@lru_cache()
+def get_document_processor() -> DocumentProcessor:
+    """
+    Get or create document processor instance (singleton)
+
+    Initializes:
+    - Vector store (Qdrant)
+    - Embedding model
+    - Chunking service
+    - Text extractors for PDF, DOCX, TXT
+
+    Returns:
+        DocumentProcessor ready for document processing
+    """
+    # Get dependencies
+    vector_store = get_vector_store()
+    embedding_model = get_embedding_model()
+    chunking_service = get_chunking_service()
+
+    # Create processor
+    processor = ProcessorFactory.create_processor(
+        vector_store=vector_store,
+        embedding_model=embedding_model,
+        chunking_service=chunking_service
+    )
+
+    # Register extractors
+    processor.register_extractor(FileType.PDF, PDFExtractor())
+    processor.register_extractor(FileType.DOCX, DOCXExtractor())
+    processor.register_extractor(FileType.TXT, TXTExtractor())
+
+    logger.info("Document processor initialized with PDF, DOCX, TXT extractors")
+
+    return processor
+
+
+async def get_processor() -> DocumentProcessor:
+    """
+    FastAPI dependency for document processor
+
+    Usage:
+        @app.post("/upload")
+        async def upload(processor: DocumentProcessor = Depends(get_processor)):
+            result = await processor.process_document(...)
+    """
+    return get_document_processor()
+
+
+async def get_database() -> DatabaseService:
+    """
+    FastAPI dependency for database service
+
+    Usage:
+        @app.post("/endpoint")
+        async def endpoint(db: DatabaseService = Depends(get_database)):
+            await db.insert_document(...)
+    """
+    db = get_database_service()
+    if not db.pool:
+        await db.connect()
+    return db
