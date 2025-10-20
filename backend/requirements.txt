@@ -9,7 +9,7 @@ pydantic-settings==2.6.0
 
 # Database and ORM
 sqlalchemy==2.0.35
-asyncpg==0.29.0
+asyncpg==0.30.0
 psycopg2-binary==2.9.9
 
 # Vector database
@@ -49,6 +49,7 @@ structlog==24.4.0
 pytest==8.3.3
 pytest-asyncio==0.24.0
 pytest-cov==5.0.0
+reportlab==4.2.5  # For generating test PDFs in unit tests
 black==24.10.0
 ruff==0.7.2
 mypy==1.13.0
