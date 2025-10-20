@@ -53,7 +53,7 @@ Vector DB   Claude API
 **Technology Stack:**
 - **Backend**: Python, FastAPI, LlamaIndex
 - **Vector Database**: Qdrant
-- **Embeddings**: Configurable - OpenAI (text-embedding-3-small/large), Anthropic/Voyage, or BAAI/bge-large-en-v1.5 (local)
+- **Embeddings**: OpenAI (text-embedding-3-small recommended) or Voyage AI
 - **LLM**: Anthropic Claude (Sonnet 4.5)
 - **Frontend**: Streamlit
 - **Metadata Storage**: PostgreSQL (with Alembic migrations)

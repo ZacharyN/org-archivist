@@ -236,41 +236,48 @@ class QueryResponse(BaseModel):
 ```python
 from enum import Enum
 from typing import Optional
-import openai
-from sentence_transformers import SentenceTransformer
 
 class EmbeddingProvider(Enum):
+    """Supported embedding providers (API-based only)"""
     OPENAI = "openai"
     VOYAGE = "voyage"
-    LOCAL = "local"
 
 class EmbeddingModelConfig:
-    """Configuration for different embedding models"""
+    """
+    Configuration for different embedding models
+
+    Note: Local embeddings are no longer supported to simplify deployment
+    and ensure consistent quality. Use OpenAI or Voyage AI APIs.
+    """
 
     MODELS = {
-        "openai-text-embedding-3-small": {
+        "text-embedding-3-small": {
             "provider": EmbeddingProvider.OPENAI,
             "dimensions": 1536,
             "max_tokens": 8191,
-            "cost_per_1k_tokens": 0.00002
+            "cost_per_1k_tokens": 0.00002,
+            "description": "Best value - recommended for most use cases"
         },
-        "openai-text-embedding-3-large": {
+        "text-embedding-3-large": {
             "provider": EmbeddingProvider.OPENAI,
             "dimensions": 3072,
             "max_tokens": 8191,
-            "cost_per_1k_tokens": 0.00013
+            "cost_per_1k_tokens": 0.00013,
+            "description": "Higher quality for demanding applications"
         },
         "voyage-large-2": {
             "provider": EmbeddingProvider.VOYAGE,
             "dimensions": 1536,
             "max_tokens": 16000,
-            "cost_per_1k_tokens": 0.00012
+            "cost_per_1k_tokens": 0.00012,
+            "description": "General purpose retrieval, optimized for RAG"
         },
-        "bge-large-en-v1.5": {
-            "provider": EmbeddingProvider.LOCAL,
-            "dimensions": 1024,
-            "max_tokens": 512,
-            "cost_per_1k_tokens": 0.0  # Free, runs locally
+        "voyage-code-2": {
+            "provider": EmbeddingProvider.VOYAGE,
+            "dimensions": 1536,
+            "max_tokens": 16000,
+            "cost_per_1k_tokens": 0.00012,
+            "description": "Optimized for code and technical documentation"
         }
     }
 
@@ -279,14 +286,19 @@ class EmbeddingModelConfig:
         """Factory method to get configured embedding model"""
         config = cls.MODELS.get(model_name)
         if not config:
-            raise ValueError(f"Unknown embedding model: {model_name}")
+            raise ValueError(
+                f"Unknown embedding model: {model_name}. "
+                f"Supported models: {', '.join(cls.MODELS.keys())}"
+            )
 
         if config["provider"] == EmbeddingProvider.OPENAI:
-            return OpenAIEmbeddings(model=model_name)
+            from llama_index.embeddings.openai import OpenAIEmbedding
+            return OpenAIEmbedding(model=model_name)
         elif config["provider"] == EmbeddingProvider.VOYAGE:
-            return VoyageEmbeddings(model=model_name)
+            from llama_index.embeddings.voyageai import VoyageEmbedding
+            return VoyageEmbedding(model_name=model_name)
         else:
-            return SentenceTransformer(f"BAAI/{model_name}")
+            raise ValueError(f"Unsupported provider: {config['provider']}")
 ```
 
 **Architecture:**
@@ -1395,25 +1407,35 @@ class CitationResult(BaseModel):
 ```python
 # Collection configuration (dynamic based on embedding model)
 def get_collection_config(embedding_model: str):
-    """Get collection config based on selected embedding model"""
+    """
+    Get collection config based on selected embedding model
+
+    Note: Only API-based embedding models are supported (OpenAI, Voyage).
+    Local embeddings have been deprecated for operational simplicity.
+    """
 
     embedding_dimensions = {
-        "openai-text-embedding-3-small": 1536,
-        "openai-text-embedding-3-large": 3072,
-        "openai-text-embedding-ada-002": 1536,
+        # OpenAI models (recommended)
+        "text-embedding-3-small": 1536,
+        "text-embedding-3-large": 3072,
+        "text-embedding-ada-002": 1536,  # Legacy model
+
+        # Voyage AI models
         "voyage-large-2": 1536,
         "voyage-code-2": 1536,
-        "bge-large-en-v1.5": 1024,  # Local option
-        "bge-small-en-v1.5": 384,   # Faster local option
     }
 
     return {
         "vectors": {
-            "size": embedding_dimensions.get(embedding_model, 1024),
+            "size": embedding_dimensions.get(embedding_model, 1536),
             "distance": "Cosine"  # Cosine similarity
         },
         "optimizers_config": {
             "indexing_threshold": 10000
+        },
+        "hnsw_config": {
+            "m": 16,  # Number of edges per node
+            "ef_construct": 100  # Construction time accuracy
         }
     }
 

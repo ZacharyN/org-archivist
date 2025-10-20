@@ -45,24 +45,27 @@ class Settings(BaseSettings):
     # =============================================================================
 
     embedding_provider: str = Field(
-        default="local",
-        description="Embedding provider (openai, voyage, local)"
+        default="openai",
+        description="Embedding provider: 'openai' or 'voyage'"
     )
     embedding_model: str = Field(
-        default="bge-large-en-v1.5",
+        default="text-embedding-3-small",
         description="Specific embedding model name"
     )
     embedding_dimensions: int = Field(
-        default=1024,
+        default=1536,
         description="Vector dimensions for embeddings"
     )
 
     @field_validator('embedding_provider')
     @classmethod
     def validate_embedding_provider(cls, v: str) -> str:
-        allowed = ['openai', 'voyage', 'local']
+        allowed = ['openai', 'voyage']
         if v.lower() not in allowed:
-            raise ValueError(f"embedding_provider must be one of: {', '.join(allowed)}")
+            raise ValueError(
+                f"embedding_provider must be one of: {', '.join(allowed)}. "
+                f"Local embeddings are no longer supported. Use OpenAI or Voyage AI."
+            )
         return v.lower()
 
     # =============================================================================
@@ -417,16 +420,18 @@ class Settings(BaseSettings):
         if not self.anthropic_api_key or self.anthropic_api_key.startswith("sk-ant-xxx"):
             raise ValueError("ANTHROPIC_API_KEY is required and must be set to a valid key")
 
-        # Check embedding-specific keys
+        # Check embedding-specific keys (OpenAI or Voyage)
         if self.embedding_provider == "openai":
             if not self.openai_api_key or self.openai_api_key.startswith("sk-xxx"):
                 raise ValueError(
-                    "OPENAI_API_KEY is required when using OpenAI embeddings"
+                    "OPENAI_API_KEY is required when using OpenAI embeddings. "
+                    "Get your API key from: https://platform.openai.com/api-keys"
                 )
         elif self.embedding_provider == "voyage":
             if not self.voyage_api_key or self.voyage_api_key.startswith("pa-xxx"):
                 raise ValueError(
-                    "VOYAGE_API_KEY is required when using Voyage embeddings"
+                    "VOYAGE_API_KEY is required when using Voyage embeddings. "
+                    "Get your API key from: https://www.voyageai.com/"
                 )
 
     def ensure_directories_exist(self) -> None:
