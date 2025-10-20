@@ -176,8 +176,14 @@ class DocumentProcessor:
             # 4. Classify document (enhance doc_type if needed)
             doc_type = self._classify_document(text, metadata)
 
-            # 5. Enrich metadata from content
-            enriched_metadata = self._enrich_metadata(text, metadata, filename)
+            # 5. Enrich metadata from content (includes file properties, structure, filename parsing)
+            enriched_metadata = self._enrich_metadata(
+                text,
+                metadata,
+                filename,
+                file_content=file_content,
+                file_extractor=extractor
+            )
 
             # 6. Create document chunks
             chunks = await self._chunk_document(text, enriched_metadata)
@@ -297,36 +303,54 @@ class DocumentProcessor:
         self,
         text: str,
         metadata: Dict,
-        filename: str
+        filename: str,
+        file_content: Optional[bytes] = None,
+        file_extractor: Optional[TextExtractor] = None
     ) -> Dict:
         """
         Enrich metadata with information extracted from content
 
-        Could extract:
-        - Key entities (organizations, people, places)
-        - Topics/themes
-        - Sentiment
-        - Document structure info
+        Uses MetadataExtractor to extract comprehensive metadata from:
+        - File properties (size, dates)
+        - Document structure (page count, word count)
+        - Filename patterns
+        - File-specific metadata (PDF/DOCX properties)
 
         Args:
             text: Document text
             metadata: Original metadata
             filename: Filename
+            file_content: Raw file bytes (optional, for file property extraction)
+            file_extractor: File-specific extractor (optional, for PDF/DOCX metadata)
 
         Returns:
             Enriched metadata dictionary
         """
-        enriched = metadata.copy()
+        # Import here to avoid circular dependency
+        from .metadata_extractor import MetadataExtractorFactory
 
-        # Add processing metadata
-        enriched['filename'] = filename
-        enriched['char_count'] = len(text)
-        enriched['word_count'] = len(text.split())
+        # Create metadata extractor
+        extractor = MetadataExtractorFactory.create_extractor()
 
-        # TODO: Add more sophisticated metadata extraction
-        # - Named entity recognition
-        # - Topic modeling
-        # - Key phrase extraction
+        # Extract comprehensive metadata
+        extracted = extractor.extract(
+            user_metadata=metadata,
+            file_content=file_content or b'',
+            filename=filename,
+            text=text,
+            file_extractor=file_extractor
+        )
+
+        # Convert to dictionary
+        enriched = extracted.to_dict()
+
+        # Validate metadata
+        is_valid, warnings = extractor.validate_metadata(extracted)
+        if not is_valid:
+            logger.warning(f"Metadata validation warnings for {filename}: {warnings}")
+            enriched['validation_warnings'] = warnings
+
+        logger.info(f"Metadata enrichment complete for {filename}")
 
         return enriched
 
