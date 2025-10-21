@@ -44,9 +44,11 @@ def get_vector_store() -> QdrantStore:
     config = VectorStoreConfig(
         host=settings.qdrant_host,
         port=settings.qdrant_port,
+        grpc_port=settings.qdrant_grpc_port,
         collection_name=settings.qdrant_collection_name,
-        vector_dimensions=settings.embedding_dimensions,
-        use_grpc=False  # Use HTTP for simplicity
+        vector_size=settings.embedding_dimensions,
+        api_key=settings.qdrant_api_key,
+        prefer_grpc=False  # Use HTTP for simplicity
     )
 
     store = QdrantStore(config)
