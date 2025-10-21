@@ -264,8 +264,8 @@ class ChunkingServiceFactory:
         # Create config with overrides
         config = ChunkingConfig(
             strategy=strategy,
-            chunk_size=config_kwargs.get('chunk_size', settings.CHUNK_SIZE),
-            chunk_overlap=config_kwargs.get('chunk_overlap', settings.CHUNK_OVERLAP),
+            chunk_size=config_kwargs.get('chunk_size', settings.chunk_size),
+            chunk_overlap=config_kwargs.get('chunk_overlap', settings.chunk_overlap),
             buffer_size=config_kwargs.get('buffer_size', 1),
             breakpoint_percentile_threshold=config_kwargs.get(
                 'breakpoint_percentile_threshold', 95
