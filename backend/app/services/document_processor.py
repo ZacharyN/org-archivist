@@ -425,14 +425,35 @@ class DocumentProcessor:
         Args:
             chunks: List of DocumentChunk objects
         """
-        # This will be implemented when we integrate embedding model
-        # For now, chunks will have None embeddings
+        if not self.embedding_model:
+            logger.warning("No embedding model available, skipping embedding generation")
+            return
 
-        # TODO: Implement actual embedding generation
-        # for chunk in chunks:
-        #     chunk.embedding = self.embedding_model.get_embedding(chunk.text)
+        if not chunks:
+            logger.debug("No chunks to generate embeddings for")
+            return
 
-        logger.debug(f"Generated embeddings for {len(chunks)} chunks (placeholder)")
+        try:
+            # Extract text from all chunks for batch processing
+            texts = [chunk.text for chunk in chunks]
+
+            logger.info(f"Generating embeddings for {len(chunks)} chunks using {type(self.embedding_model).__name__}")
+
+            # Generate embeddings in batch for efficiency
+            # LlamaIndex embedding models support get_text_embedding_batch()
+            embeddings = self.embedding_model.get_text_embedding_batch(texts)
+
+            # Assign embeddings to chunks
+            for chunk, embedding in zip(chunks, embeddings):
+                chunk.embedding = embedding
+
+            logger.info(f"Successfully generated {len(embeddings)} embeddings (dimensions: {len(embeddings[0]) if embeddings else 0})")
+
+        except Exception as e:
+            logger.error(f"Failed to generate embeddings: {e}")
+            # Don't fail the entire pipeline - continue with None embeddings
+            # This allows the document to be stored even if embedding generation fails
+            logger.warning("Continuing without embeddings - chunks will have None embeddings")
 
     async def _store_chunks(self, chunks: List[DocumentChunk]) -> None:
         """
