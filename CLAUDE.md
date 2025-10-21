@@ -91,10 +91,11 @@ find_tasks(filter_by="project", filter_value="proj-123")
 # Project Context
 STOP and make sure you understand the project context and the project requirements before beginning work on a task. It is important to understand how the task you are working on relates to the overall project.
 
-1. Full project context is located in the `/context/project-context.md` file. Review the context directory for complete information about the project.
-2. Full project requirements are in the `/context/requirements.md` directory. Review the requirements frequently to understand the functional and non-functional requirements of the project.
-3. Full project architecture is located in the `/context/architecture.md` file. Review the architecture before starting a development task to understand how the feature or function you are building fits into the overall design of the application.
-4. Documentation is located in the `/docs/` directory. Create documentation when requested and place it in this directory. Review `/docs/README.md` for the standards and expectations for documentation.
+1. Frontend development context is located in the `/context/frontend-requirements.md` file. When there is conflicting architecture or business logic, this file supersedes the other files.
+2. Full project context is located in the `/context/project-context.md` file. Review the context directory for complete information about the project.
+3. Full project requirements are in the `/context/requirements.md` directory. Review the requirements frequently to understand the functional and non-functional requirements of the project.
+4. Full project architecture is located in the `/context/architecture.md` file. Review the architecture before starting a development task to understand how the feature or function you are building fits into the overall design of the application.
+5. Documentation is located in the `/docs/` directory. Create documentation when requested and place it in this directory. Review `/docs/README.md` for the standards and expectations for documentation.
 
 ---
 
