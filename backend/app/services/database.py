@@ -571,7 +571,9 @@ class DatabaseService:
     async def list_writing_styles(
         self,
         style_type: Optional[str] = None,
-        active_only: bool = False,
+        active: Optional[bool] = None,
+        search: Optional[str] = None,
+        created_by: Optional[str] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
@@ -580,7 +582,9 @@ class DatabaseService:
 
         Args:
             style_type: Filter by type (grant, proposal, report, general)
-            active_only: If True, only return active styles
+            active: Filter by active status (true/false)
+            search: Search in name and description
+            created_by: Filter by creator user ID
             skip: Number of records to skip (pagination)
             limit: Maximum number of records to return
 
@@ -600,9 +604,19 @@ class DatabaseService:
             params.append(style_type)
             param_idx += 1
 
-        if active_only:
+        if active is not None:
             conditions.append(f"active = ${param_idx}")
-            params.append(True)
+            params.append(active)
+            param_idx += 1
+
+        if search:
+            conditions.append(f"(name ILIKE ${param_idx} OR description ILIKE ${param_idx})")
+            params.append(f"%{search}%")
+            param_idx += 1
+
+        if created_by:
+            conditions.append(f"created_by = ${param_idx}")
+            params.append(UUID(created_by))
             param_idx += 1
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
@@ -790,6 +804,54 @@ class DatabaseService:
             Updated style data or None if not found
         """
         return await self.update_writing_style(style_id, active=False)
+
+    async def get_writing_style_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve writing style by name
+
+        Args:
+            name: Style name
+
+        Returns:
+            Style data dictionary or None if not found
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            SELECT
+                style_id, name, type, description, prompt_content,
+                samples, analysis_metadata, sample_count, active,
+                created_at, updated_at, created_by
+            FROM writing_styles
+            WHERE name = $1
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, name)
+
+                if not row:
+                    return None
+
+                return {
+                    "style_id": str(row["style_id"]),
+                    "name": row["name"],
+                    "type": row["type"],
+                    "description": row["description"],
+                    "prompt_content": row["prompt_content"],
+                    "samples": row["samples"],
+                    "analysis_metadata": row["analysis_metadata"],
+                    "sample_count": row["sample_count"],
+                    "active": row["active"],
+                    "created_at": row["created_at"].isoformat(),
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                    "created_by": str(row["created_by"]) if row["created_by"] else None,
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to get writing style by name '{name}': {e}")
+            raise
 
 
 # Singleton instance
