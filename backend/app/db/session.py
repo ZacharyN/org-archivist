@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from backend.app.config import get_settings
+from app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
