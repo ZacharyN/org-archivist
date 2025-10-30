@@ -11,6 +11,13 @@ from .auth import (
     UserInfoResponse,
     LogoutResponse,
 )
+from .user import (
+    UserCreateRequest,
+    UserUpdateRequest,
+    UserResponse,
+    UserListResponse,
+    UserDeleteResponse,
+)
 from .document import (
     DocumentMetadata,
     DocumentUploadRequest,
@@ -59,6 +66,12 @@ __all__ = [
     "RefreshResponse",
     "UserInfoResponse",
     "LogoutResponse",
+    # User Management
+    "UserCreateRequest",
+    "UserUpdateRequest",
+    "UserResponse",
+    "UserListResponse",
+    "UserDeleteResponse",
     # Document
     "DocumentMetadata",
     "DocumentUploadRequest",
