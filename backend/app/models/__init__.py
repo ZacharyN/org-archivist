@@ -3,6 +3,14 @@ Pydantic models for request/response validation
 """
 
 from .common import HealthCheckResponse, ErrorResponse, SuccessResponse
+from .auth import (
+    LoginRequest,
+    LoginResponse,
+    RefreshRequest,
+    RefreshResponse,
+    UserInfoResponse,
+    LogoutResponse,
+)
 from .document import (
     DocumentMetadata,
     DocumentUploadRequest,
@@ -44,6 +52,13 @@ __all__ = [
     "HealthCheckResponse",
     "ErrorResponse",
     "SuccessResponse",
+    # Authentication
+    "LoginRequest",
+    "LoginResponse",
+    "RefreshRequest",
+    "RefreshResponse",
+    "UserInfoResponse",
+    "LogoutResponse",
     # Document
     "DocumentMetadata",
     "DocumentUploadRequest",

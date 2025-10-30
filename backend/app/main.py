@@ -89,8 +89,9 @@ metrics_middleware = configure_middleware(app)
 configure_exception_handlers(app)
 
 # Register API routers
-from app.api import query, chat, prompts, config, documents
+from app.api import auth, query, chat, prompts, config, documents
 
+app.include_router(auth.router)
 app.include_router(query.router)
 app.include_router(chat.router)
 app.include_router(prompts.router)
