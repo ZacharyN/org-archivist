@@ -18,12 +18,21 @@ from sqlalchemy import (
     String,
     Text,
     UUID,
+    Enum as SQLEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+import enum
 
 Base = declarative_base()
+
+
+class UserRole(str, enum.Enum):
+    """User role enumeration"""
+    ADMIN = "admin"
+    EDITOR = "editor"
+    WRITER = "writer"
 
 
 class Document(Base):
@@ -207,4 +216,53 @@ class AuditLog(Base):
         Index("idx_audit_log_event_type", "event_type"),
         Index("idx_audit_log_entity_type", "entity_type"),
         Index("idx_audit_log_created_at", "created_at"),
+    )
+
+
+class User(Base):
+    """Users table - stores user accounts for authentication"""
+
+    __tablename__ = "users"
+
+    user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    email = Column(String(255), unique=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(255))
+    role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.WRITER)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_superuser = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_users_email", "email"),
+        Index("idx_users_role", "role"),
+        Index("idx_users_is_active", "is_active"),
+    )
+
+
+class UserSession(Base):
+    """User Sessions table - tracks active user sessions"""
+
+    __tablename__ = "user_sessions"
+
+    session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    access_token = Column(String(500), nullable=False)
+    refresh_token = Column(String(500))
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    ip_address = Column(String(45))  # Supports IPv6
+    user_agent = Column(Text)
+
+    # Relationship
+    user = relationship("User", back_populates="sessions")
+
+    __table_args__ = (
+        Index("idx_user_sessions_user_id", "user_id"),
+        Index("idx_user_sessions_access_token", "access_token"),
+        Index("idx_user_sessions_expires_at", "expires_at"),
     )
