@@ -266,3 +266,33 @@ class UserSession(Base):
         Index("idx_user_sessions_access_token", "access_token"),
         Index("idx_user_sessions_expires_at", "expires_at"),
     )
+
+
+class WritingStyle(Base):
+    """Writing Styles table - stores AI-generated writing style prompts"""
+
+    __tablename__ = "writing_styles"
+
+    style_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String(100), nullable=False, unique=True)
+    type = Column(String(50), nullable=False)
+    description = Column(Text)
+    prompt_content = Column(Text, nullable=False)
+    samples = Column(JSONB)  # Array of original writing samples
+    analysis_metadata = Column(JSONB)  # AI analysis results (style elements analyzed)
+    sample_count = Column(Integer, default=0)
+    active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id"))
+
+    # Constraints
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('grant', 'proposal', 'report', 'general')",
+            name="valid_style_type"
+        ),
+        Index("idx_writing_styles_type", "type"),
+        Index("idx_writing_styles_active", "active"),
+        Index("idx_writing_styles_created_by", "created_by"),
+    )
