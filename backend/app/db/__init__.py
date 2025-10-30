@@ -11,7 +11,11 @@ from app.db.models import (
     Message,
     PromptTemplate,
     SystemConfig,
+    User,
+    UserRole,
+    UserSession,
 )
+from app.db.session import get_db, init_db, close_db
 
 __all__ = [
     "Base",
@@ -23,4 +27,10 @@ __all__ = [
     "Message",
     "SystemConfig",
     "AuditLog",
+    "User",
+    "UserRole",
+    "UserSession",
+    "get_db",
+    "init_db",
+    "close_db",
 ]
