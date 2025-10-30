@@ -26,6 +26,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Org Archivist backend...")
     logger.info("Initializing services...")
 
+    # Run database migrations first (before any database connections)
+    from app.config import settings
+    from app.utils.migrations import run_startup_migrations, MigrationError
+
+    try:
+        await run_startup_migrations(
+            database_url=settings.database_url,
+            disable_auto_migrations=settings.disable_auto_migrations,
+            max_attempts=settings.migration_retry_attempts,
+            retry_delay_seconds=settings.migration_retry_delay_seconds,
+            timeout_seconds=settings.migration_timeout_seconds
+        )
+    except MigrationError as e:
+        logger.error(f"Failed to run migrations: {e}")
+        logger.warning(
+            "Application will continue starting, but database may be out of date. "
+            "Please check database connectivity and run migrations manually."
+        )
+        # Continue startup even if migrations fail (allows debugging)
+        # In production, you might want to exit here instead
+
     # Initialize database connection pool
     from app.services.database import get_database_service
     db = get_database_service()

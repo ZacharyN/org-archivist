@@ -367,6 +367,27 @@ class Settings(BaseSettings):
     )
 
     # =============================================================================
+    # Database Migrations
+    # =============================================================================
+
+    disable_auto_migrations: bool = Field(
+        default=False,
+        description="Disable automatic database migrations on startup"
+    )
+    migration_timeout_seconds: int = Field(
+        default=60,
+        description="Timeout for migration operations in seconds"
+    )
+    migration_retry_attempts: int = Field(
+        default=3,
+        description="Number of retry attempts for migrations"
+    )
+    migration_retry_delay_seconds: int = Field(
+        default=5,
+        description="Delay between migration retry attempts"
+    )
+
+    # =============================================================================
     # Development & Testing
     # =============================================================================
 

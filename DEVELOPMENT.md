@@ -218,27 +218,58 @@ docker-compose logs -f backend
 
 After starting services for the first time:
 
-1. **PostgreSQL** initializes automatically using `docker/postgres/init/01-init-database.sql`
-2. **Qdrant** requires manual collection initialization (see below)
+1. **PostgreSQL** - Database is created empty, then populated by Alembic migrations
+2. **Alembic Migrations** - Run automatically on backend startup (development mode)
+3. **Qdrant** - Collection is initialized automatically by the backend on first startup
+
+#### Database Migrations (Alembic)
+
+**Automatic Migration (Default in Development):**
+
+Migrations run automatically when the backend starts. Check the logs:
+
+```bash
+docker-compose logs backend | grep -i migration
+```
+
+You should see output like:
+```
+INFO: Starting automatic migration check...
+INFO: Running migrations with alembic upgrade head
+INFO: Migrations completed successfully
+```
+
+**Manual Migration (Production):**
+
+For production deployments, set `DISABLE_AUTO_MIGRATIONS=true` in your `.env` file and run migrations manually:
+
+```bash
+# Apply all pending migrations
+docker exec -it org-archivist-backend alembic upgrade head
+
+# Or run locally if you have Python environment set up
+cd backend
+alembic upgrade head
+```
 
 #### Initialize Qdrant Collection
 
-**Method 1: Run script directly (if qdrant-client installed)**
+**Method 1: Automatic (Recommended)**
+
+The backend application automatically initializes the Qdrant collection on first startup. No manual action needed.
+
+**Method 2: Run script directly (if qdrant-client installed)**
 
 ```bash
 pip install qdrant-client
 python docker/qdrant/scripts/init_collection.py
 ```
 
-**Method 2: Run from backend container**
+**Method 3: Run from backend container**
 
 ```bash
 docker exec -it org-archivist-backend python /app/scripts/init_collection.py
 ```
-
-**Method 3: Automatic (backend handles it)**
-
-The backend application should automatically initialize the collection on first startup.
 
 ---
 
@@ -336,9 +367,11 @@ pytest -v
    - Check logs: `docker-compose logs -f frontend`
 
 3. **Database Schema Changes**
-   - Edit `docker/postgres/init/01-init-database.sql`
-   - Recreate database: `docker-compose down -v && docker-compose up -d`
-   - **OR** use migrations (Alembic) - see Advanced section
+   - Update SQLAlchemy models in `backend/app/db/models.py`
+   - Generate migration: `cd backend && alembic revision --autogenerate -m "description"`
+   - Review generated migration in `backend/alembic/versions/`
+   - Restart backend: `docker-compose restart backend` (auto-applies in dev mode)
+   - For production: manually run `alembic upgrade head` before deploying
 
 ### Adding Dependencies
 
@@ -381,9 +414,12 @@ docker exec -i org-archivist-postgres psql -U user org_archivist < backup.sql
 **Reset Database:**
 
 ```bash
+# WARNING: This deletes all data!
 docker-compose down -v
 docker-compose up -d postgres
-# Database will be recreated from init script
+
+# Migrations will auto-run on backend startup
+docker-compose up -d backend
 ```
 
 ### Working with Qdrant
@@ -621,24 +657,73 @@ View detailed logs:
 docker-compose logs -f backend | grep DEBUG
 ```
 
-### Using Database Migrations (Alembic)
+### Database Migrations with Alembic
 
-Instead of recreating the database, use Alembic for schema changes:
+Org Archivist uses **pure Alembic** for all database schema management. There are no SQL init scripts.
+
+#### Development Workflow (Automatic)
+
+1. **Update models:**
+   ```bash
+   # Edit backend/app/db/models.py
+   ```
+
+2. **Generate migration:**
+   ```bash
+   cd backend
+   alembic revision --autogenerate -m "add_user_preferences_table"
+   ```
+
+3. **Review migration:**
+   ```bash
+   # Check backend/alembic/versions/xxxxx_add_user_preferences_table.py
+   ```
+
+4. **Apply migration:**
+   ```bash
+   # Just restart the backend - migrations auto-apply
+   docker-compose restart backend
+   ```
+
+#### Production Workflow (Manual)
+
+1. **Disable auto-migrations:**
+   ```bash
+   # In .env or environment
+   DISABLE_AUTO_MIGRATIONS=true
+   ```
+
+2. **Apply migrations before deployment:**
+   ```bash
+   cd backend
+   alembic upgrade head
+   ```
+
+3. **Deploy application:**
+   ```bash
+   docker-compose up -d backend
+   ```
+
+#### Useful Commands
 
 ```bash
-# Initialize Alembic (first time)
-cd backend
-alembic init alembic
+# Show current migration version
+alembic current
 
-# Create migration
-alembic revision --autogenerate -m "Add new column"
+# Show migration history
+alembic history
 
-# Apply migration
-alembic upgrade head
-
-# Rollback migration
+# Rollback one migration
 alembic downgrade -1
+
+# Rollback to specific version
+alembic downgrade <revision_id>
+
+# Check pending migrations
+alembic history | grep "pending"
 ```
+
+For more details, see `backend/alembic/README.md` and `/docs/auto-migrations.md`.
 
 ---
 

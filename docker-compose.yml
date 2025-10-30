@@ -4,6 +4,10 @@ services:
   # =============================================================================
   # PostgreSQL Database
   # =============================================================================
+  # Note: Database schema is managed by Alembic migrations, not init scripts.
+  # Migrations run automatically when the backend service starts.
+  # See docs/auto-migrations.md for details.
+  # =============================================================================
   postgres:
     image: postgres:15-alpine
     container_name: org-archivist-postgres
@@ -17,7 +21,8 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      # Init scripts removed - schema managed by Alembic migrations
+      # See backend/alembic/versions/ for migration files
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-org_archivist}"]
       interval: 10s

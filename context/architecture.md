@@ -1610,6 +1610,111 @@ CREATE TABLE system_config (
 );
 ```
 
+#### 3.3 Database Schema Management (Alembic)
+
+**Purpose:** Manage database schema changes through version-controlled migrations.
+
+**Approach:** Pure Alembic - all schema changes are managed through migration scripts.
+
+**Migration Strategy:**
+
+```
+Development Environment:
+├─→ Auto-migration on startup (default)
+├─→ Developer creates migration with alembic revision --autogenerate
+├─→ Backend applies migration automatically on next startup
+└─→ Fast iteration cycle
+
+Production Environment:
+├─→ Auto-migration disabled (DISABLE_AUTO_MIGRATIONS=true)
+├─→ Migrations applied manually before deployment
+├─→ Verification step before application starts
+└─→ Controlled deployment process
+```
+
+**Migration Architecture:**
+
+```python
+# backend/app/utils/migrations.py
+async def run_startup_migrations(
+    database_url: str,
+    disable_auto_migrations: bool = False,
+    max_attempts: int = 3,
+    retry_delay_seconds: float = 5.0,
+    timeout_seconds: float = 300.0
+) -> bool:
+    """
+    Run Alembic migrations with retry logic and timeout handling
+
+    Features:
+    - Automatic retry on connection failures
+    - Subprocess isolation for reliability
+    - Timeout protection
+    - Error logging and reporting
+    """
+
+    if disable_auto_migrations:
+        logger.info("Auto-migrations disabled, checking current state only")
+        return True
+
+    # Run alembic upgrade head in subprocess
+    # With retry logic and timeout handling
+    ...
+```
+
+**Alembic Configuration:**
+
+```
+backend/
+├── alembic/
+│   ├── versions/
+│   │   ├── 2e0140e533a8_baseline_schema.py      # Full initial schema
+│   │   ├── d382069dacef_add_writing_styles.py   # Phase 3 tables
+│   │   └── 212c31d97f11_add_seed_data.py        # System config data
+│   ├── env.py                                   # Alembic environment
+│   ├── script.py.mako                          # Migration template
+│   └── README.md                               # Migration documentation
+├── alembic.ini                                  # Alembic configuration
+└── app/
+    ├── db/models.py                            # SQLAlchemy models
+    └── utils/migrations.py                     # Auto-migration runner
+```
+
+**Development Workflow:**
+
+1. **Update Models:** Modify SQLAlchemy models in `app/db/models.py`
+2. **Generate Migration:** `alembic revision --autogenerate -m "description"`
+3. **Review Migration:** Check generated file in `alembic/versions/`
+4. **Apply Migration:** Restart backend (auto-applies) or run `alembic upgrade head`
+
+**Production Deployment:**
+
+```bash
+# 1. Set environment variable
+export DISABLE_AUTO_MIGRATIONS=true
+
+# 2. Apply migrations manually
+cd backend
+alembic upgrade head
+
+# 3. Start application
+docker-compose up -d backend
+```
+
+**Migration Benefits:**
+
+- **Version Control:** All schema changes tracked in Git
+- **Rollback Capability:** Can downgrade to any previous version
+- **Review Process:** Migrations reviewed before applying
+- **Consistency:** Same schema applied across all environments
+- **Automation:** Automatic in dev, controlled in production
+
+**Key Files:**
+
+- `backend/alembic/README.md` - Detailed migration documentation
+- `docs/auto-migrations.md` - Auto-migration implementation details
+- `DEVELOPMENT.md` - Developer workflow guide
+
 ---
 
 ## Data Flow Diagrams
