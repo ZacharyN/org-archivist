@@ -133,7 +133,7 @@ These tests require **real running services** (not mocks):
    docker-compose up postgres -d
    ```
    - Must be accessible at configured host/port
-   - Database schema initialized (see `docker/postgres/init/`)
+   - Database schema initialized via Alembic migrations (auto-run on backend startup)
 
 3. **Environment Variables**
    ```bash

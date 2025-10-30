@@ -483,7 +483,8 @@ jobs:
 
       - name: Initialize database schema
         run: |
-          docker exec postgres psql -U user -d org_archivist -f /init/01-init-database.sql
+          cd backend
+          alembic upgrade head
 
       - name: Run E2E tests
         env:

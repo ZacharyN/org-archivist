@@ -172,8 +172,10 @@ The **backend is production-ready** with comprehensive functionality including d
 **Files:**
 - `backend/app/services/database.py`
 - `backend/app/services/vector_store.py`
-- `docker/postgres/init/01-init-database.sql`
+- `backend/alembic/versions/` - Database migrations (replaced SQL init script)
 - `docker/qdrant/config/config.yaml`
+
+**Note:** Database schema now managed via Alembic migrations (see `/docs/auto-migrations.md`)
 
 **Commit:** 6e72074 (feat: integrate document processing)
 
@@ -184,7 +186,7 @@ The **backend is production-ready** with comprehensive functionality including d
 
 **Components:**
 - ✅ Docker Compose configuration
-- ✅ PostgreSQL service with init scripts
+- ✅ PostgreSQL service with Alembic auto-migrations
 - ✅ Qdrant service with custom config
 - ✅ Backend service (FastAPI)
 - ✅ Environment variable management
@@ -511,10 +513,10 @@ frontend:
 
 ### Deferred to Future Sprints:
 
-1. **Database Migrations (Alembic)**
-   - Not critical for MVP (using SQL init scripts)
-   - Schedule for Phase 3: Production Hardening
-   - Task noted in user's external system
+1. **Database Migrations (Alembic)** ✅ COMPLETED
+   - Implemented pure Alembic approach with auto-migrations
+   - Replaces SQL init scripts with version-controlled migrations
+   - See `/docs/auto-migrations.md` for implementation details
 
 2. **Advanced RAG Features** (Phase 2)
    - Query decomposition

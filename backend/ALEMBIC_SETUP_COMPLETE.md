@@ -141,6 +141,11 @@ None. System is ready for use.
 
 ## Notes
 
-- The baseline migration is a no-op because the schema already exists (created by `docker/postgres/init/01-init-database.sql`)
-- Future migrations will be the source of truth for schema changes
-- Eventually, the init SQL script can be deprecated in favor of Alembic migrations
+**UPDATE (October 2025):** This document describes the initial Alembic setup. The project has since migrated to a pure Alembic approach:
+
+- ✅ The baseline migration now creates the full schema (no longer a no-op)
+- ✅ SQL init scripts have been deprecated and archived
+- ✅ Auto-migration system implemented for development (`backend/app/utils/migrations.py`)
+- ✅ Manual migration workflow documented for production
+
+See `/docs/auto-migrations.md` for current implementation details.
