@@ -853,6 +853,597 @@ class DatabaseService:
             logger.error(f"Failed to get writing style by name '{name}': {e}")
             raise
 
+    # ======================
+    # Outputs Methods
+    # ======================
+
+    async def create_output(
+        self,
+        output_id: UUID,
+        output_type: str,
+        title: str,
+        content: str,
+        conversation_id: Optional[UUID] = None,
+        word_count: Optional[int] = None,
+        status: str = "draft",
+        writing_style_id: Optional[UUID] = None,
+        funder_name: Optional[str] = None,
+        requested_amount: Optional[float] = None,
+        awarded_amount: Optional[float] = None,
+        submission_date: Optional[str] = None,
+        decision_date: Optional[str] = None,
+        success_notes: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        created_by: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a new output record
+
+        Args:
+            output_id: Unique output identifier
+            output_type: Type of output (grant_proposal, budget_narrative, etc.)
+            title: Output title
+            content: Output content
+            conversation_id: Optional conversation ID this output belongs to
+            word_count: Word count of content
+            status: Output status (draft, submitted, pending, awarded, not_awarded)
+            writing_style_id: Optional writing style used
+            funder_name: Name of funder
+            requested_amount: Amount requested
+            awarded_amount: Amount awarded
+            submission_date: Date submitted
+            decision_date: Date decision received
+            success_notes: Notes about success/failure
+            metadata: Additional metadata (sources, confidence, etc.)
+            created_by: User who created the output
+
+        Returns:
+            Dictionary with created output data
+
+        Raises:
+            Exception: If creation fails
+        """
+        if not self.pool:
+            await self.connect()
+
+        import json
+
+        query = """
+            INSERT INTO outputs (
+                output_id, conversation_id, output_type, title, content,
+                word_count, status, writing_style_id, funder_name,
+                requested_amount, awarded_amount, submission_date, decision_date,
+                success_notes, metadata, created_by, created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+            )
+            RETURNING output_id, output_type, title, status, created_at
+        """
+
+        try:
+            now = datetime.utcnow()
+            metadata_json = json.dumps(metadata) if metadata else None
+
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    output_id, conversation_id, output_type, title, content,
+                    word_count, status, writing_style_id, funder_name,
+                    requested_amount, awarded_amount, submission_date, decision_date,
+                    success_notes, metadata_json, created_by, now, now
+                )
+
+                logger.info(f"Created output: {output_id} ({title})")
+
+                return {
+                    "output_id": str(row["output_id"]),
+                    "output_type": row["output_type"],
+                    "title": row["title"],
+                    "status": row["status"],
+                    "created_at": row["created_at"].isoformat(),
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to create output {output_id}: {e}")
+            raise
+
+    async def get_output(self, output_id: UUID) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve output by ID
+
+        Args:
+            output_id: Output ID to retrieve
+
+        Returns:
+            Output data dictionary or None if not found
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            SELECT
+                output_id, conversation_id, output_type, title, content,
+                word_count, status, writing_style_id, funder_name,
+                requested_amount, awarded_amount, submission_date, decision_date,
+                success_notes, metadata, created_by, created_at, updated_at
+            FROM outputs
+            WHERE output_id = $1
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, output_id)
+
+                if not row:
+                    return None
+
+                return {
+                    "output_id": str(row["output_id"]),
+                    "conversation_id": str(row["conversation_id"]) if row["conversation_id"] else None,
+                    "output_type": row["output_type"],
+                    "title": row["title"],
+                    "content": row["content"],
+                    "word_count": row["word_count"],
+                    "status": row["status"],
+                    "writing_style_id": str(row["writing_style_id"]) if row["writing_style_id"] else None,
+                    "funder_name": row["funder_name"],
+                    "requested_amount": float(row["requested_amount"]) if row["requested_amount"] else None,
+                    "awarded_amount": float(row["awarded_amount"]) if row["awarded_amount"] else None,
+                    "submission_date": row["submission_date"].isoformat() if row["submission_date"] else None,
+                    "decision_date": row["decision_date"].isoformat() if row["decision_date"] else None,
+                    "success_notes": row["success_notes"],
+                    "metadata": row["metadata"],
+                    "created_by": row["created_by"],
+                    "created_at": row["created_at"].isoformat(),
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to get output {output_id}: {e}")
+            raise
+
+    async def list_outputs(
+        self,
+        output_type: Optional[List[str]] = None,
+        status: Optional[List[str]] = None,
+        created_by: Optional[str] = None,
+        writing_style_id: Optional[str] = None,
+        funder_name: Optional[str] = None,
+        date_range: Optional[tuple] = None,
+        skip: int = 0,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        List outputs with optional filtering
+
+        Args:
+            output_type: Filter by output types (list)
+            status: Filter by statuses (list)
+            created_by: Filter by creator user
+            writing_style_id: Filter by writing style
+            funder_name: Filter by funder (partial match)
+            date_range: Tuple of (start_date, end_date) for filtering by created_at
+            skip: Number of records to skip (pagination)
+            limit: Maximum number of records to return
+
+        Returns:
+            List of output data dictionaries
+        """
+        if not self.pool:
+            await self.connect()
+
+        # Build query with filters
+        conditions = []
+        params = []
+        param_idx = 1
+
+        if output_type:
+            placeholders = ", ".join([f"${param_idx + i}" for i in range(len(output_type))])
+            conditions.append(f"output_type IN ({placeholders})")
+            params.extend(output_type)
+            param_idx += len(output_type)
+
+        if status:
+            placeholders = ", ".join([f"${param_idx + i}" for i in range(len(status))])
+            conditions.append(f"status IN ({placeholders})")
+            params.extend(status)
+            param_idx += len(status)
+
+        if created_by:
+            conditions.append(f"created_by = ${param_idx}")
+            params.append(created_by)
+            param_idx += 1
+
+        if writing_style_id:
+            conditions.append(f"writing_style_id = ${param_idx}")
+            params.append(UUID(writing_style_id))
+            param_idx += 1
+
+        if funder_name:
+            conditions.append(f"funder_name ILIKE ${param_idx}")
+            params.append(f"%{funder_name}%")
+            param_idx += 1
+
+        if date_range:
+            start_date, end_date = date_range
+            if start_date:
+                conditions.append(f"created_at >= ${param_idx}")
+                params.append(start_date)
+                param_idx += 1
+            if end_date:
+                conditions.append(f"created_at <= ${param_idx}")
+                params.append(end_date)
+                param_idx += 1
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        query = f"""
+            SELECT
+                output_id, conversation_id, output_type, title, content,
+                word_count, status, writing_style_id, funder_name,
+                requested_amount, awarded_amount, submission_date, decision_date,
+                success_notes, metadata, created_by, created_at, updated_at
+            FROM outputs
+            {where_clause}
+            ORDER BY created_at DESC
+            OFFSET ${param_idx} LIMIT ${param_idx + 1}
+        """
+
+        params.extend([skip, limit])
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, *params)
+
+                outputs = []
+                for row in rows:
+                    outputs.append({
+                        "output_id": str(row["output_id"]),
+                        "conversation_id": str(row["conversation_id"]) if row["conversation_id"] else None,
+                        "output_type": row["output_type"],
+                        "title": row["title"],
+                        "content": row["content"],
+                        "word_count": row["word_count"],
+                        "status": row["status"],
+                        "writing_style_id": str(row["writing_style_id"]) if row["writing_style_id"] else None,
+                        "funder_name": row["funder_name"],
+                        "requested_amount": float(row["requested_amount"]) if row["requested_amount"] else None,
+                        "awarded_amount": float(row["awarded_amount"]) if row["awarded_amount"] else None,
+                        "submission_date": row["submission_date"].isoformat() if row["submission_date"] else None,
+                        "decision_date": row["decision_date"].isoformat() if row["decision_date"] else None,
+                        "success_notes": row["success_notes"],
+                        "metadata": row["metadata"],
+                        "created_by": row["created_by"],
+                        "created_at": row["created_at"].isoformat(),
+                        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                    })
+
+                return outputs
+
+        except Exception as e:
+            logger.error(f"Failed to list outputs: {e}")
+            raise
+
+    async def update_output(
+        self,
+        output_id: UUID,
+        **updates
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Update output fields
+
+        Args:
+            output_id: Output ID to update
+            **updates: Fields to update (any output field except output_id)
+
+        Returns:
+            Updated output data or None if not found
+        """
+        if not self.pool:
+            await self.connect()
+
+        if not updates:
+            return await self.get_output(output_id)
+
+        import json
+
+        # Build SET clause dynamically
+        set_clauses = []
+        params = []
+        param_idx = 1
+
+        # Handle metadata specially (needs JSON serialization)
+        if "metadata" in updates:
+            set_clauses.append(f"metadata = ${param_idx}")
+            params.append(json.dumps(updates["metadata"]) if updates["metadata"] else None)
+            param_idx += 1
+            del updates["metadata"]
+
+        # Add other fields
+        for field, value in updates.items():
+            set_clauses.append(f"{field} = ${param_idx}")
+            params.append(value)
+            param_idx += 1
+
+        # Always update updated_at
+        set_clauses.append(f"updated_at = ${param_idx}")
+        params.append(datetime.utcnow())
+        param_idx += 1
+
+        # Add output_id as last parameter
+        params.append(output_id)
+
+        query = f"""
+            UPDATE outputs
+            SET {', '.join(set_clauses)}
+            WHERE output_id = ${param_idx}
+            RETURNING output_id, output_type, title, status, updated_at
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, *params)
+
+                if not row:
+                    return None
+
+                logger.info(f"Updated output: {output_id}")
+
+                return {
+                    "output_id": str(row["output_id"]),
+                    "output_type": row["output_type"],
+                    "title": row["title"],
+                    "status": row["status"],
+                    "updated_at": row["updated_at"].isoformat(),
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to update output {output_id}: {e}")
+            raise
+
+    async def delete_output(self, output_id: UUID) -> bool:
+        """
+        Delete an output
+
+        Args:
+            output_id: Output ID to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = "DELETE FROM outputs WHERE output_id = $1"
+
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.execute(query, output_id)
+
+                # Check if any rows were deleted
+                deleted = result.split()[-1] == "1"
+
+                if deleted:
+                    logger.info(f"Deleted output: {output_id}")
+                else:
+                    logger.warning(f"Output not found for deletion: {output_id}")
+
+                return deleted
+
+        except Exception as e:
+            logger.error(f"Failed to delete output {output_id}: {e}")
+            raise
+
+    async def get_outputs_stats(
+        self,
+        output_type: Optional[List[str]] = None,
+        created_by: Optional[str] = None,
+        date_range: Optional[tuple] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get statistics about outputs
+
+        Args:
+            output_type: Filter by output types
+            created_by: Filter by creator
+            date_range: Tuple of (start_date, end_date)
+
+        Returns:
+            Dictionary with statistics:
+            - total_outputs: Total count
+            - by_type: Count by output type
+            - by_status: Count by status
+            - success_rate: Percentage of awarded grants
+            - total_requested: Sum of requested amounts
+            - total_awarded: Sum of awarded amounts
+        """
+        if not self.pool:
+            await self.connect()
+
+        # Build WHERE clause for filtering
+        conditions = []
+        params = []
+        param_idx = 1
+
+        if output_type:
+            placeholders = ", ".join([f"${param_idx + i}" for i in range(len(output_type))])
+            conditions.append(f"output_type IN ({placeholders})")
+            params.extend(output_type)
+            param_idx += len(output_type)
+
+        if created_by:
+            conditions.append(f"created_by = ${param_idx}")
+            params.append(created_by)
+            param_idx += 1
+
+        if date_range:
+            start_date, end_date = date_range
+            if start_date:
+                conditions.append(f"created_at >= ${param_idx}")
+                params.append(start_date)
+                param_idx += 1
+            if end_date:
+                conditions.append(f"created_at <= ${param_idx}")
+                params.append(end_date)
+                param_idx += 1
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        query = f"""
+            SELECT
+                COUNT(*) as total_outputs,
+                COUNT(*) FILTER (WHERE status = 'awarded') as awarded_count,
+                COUNT(*) FILTER (WHERE status = 'submitted' OR status = 'pending' OR status = 'awarded' OR status = 'not_awarded') as submitted_count,
+                COALESCE(SUM(requested_amount), 0) as total_requested,
+                COALESCE(SUM(awarded_amount), 0) as total_awarded
+            FROM outputs
+            {where_clause}
+        """
+
+        query_by_type = f"""
+            SELECT output_type, COUNT(*) as count
+            FROM outputs
+            {where_clause}
+            GROUP BY output_type
+        """
+
+        query_by_status = f"""
+            SELECT status, COUNT(*) as count
+            FROM outputs
+            {where_clause}
+            GROUP BY status
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                # Get overall stats
+                overall = await conn.fetchrow(query, *params)
+
+                # Get counts by type
+                by_type_rows = await conn.fetch(query_by_type, *params)
+                by_type = {row["output_type"]: row["count"] for row in by_type_rows}
+
+                # Get counts by status
+                by_status_rows = await conn.fetch(query_by_status, *params)
+                by_status = {row["status"]: row["count"] for row in by_status_rows}
+
+                # Calculate success rate
+                submitted = overall["submitted_count"]
+                awarded = overall["awarded_count"]
+                success_rate = (awarded / submitted * 100) if submitted > 0 else 0.0
+
+                # Calculate averages
+                total_outputs = overall["total_outputs"]
+                avg_requested = (float(overall["total_requested"]) / total_outputs) if total_outputs > 0 else 0.0
+                avg_awarded = (float(overall["total_awarded"]) / total_outputs) if total_outputs > 0 else 0.0
+
+                return {
+                    "total_outputs": total_outputs,
+                    "by_type": by_type,
+                    "by_status": by_status,
+                    "success_rate": round(success_rate, 2),
+                    "total_requested": float(overall["total_requested"]),
+                    "total_awarded": float(overall["total_awarded"]),
+                    "avg_requested": round(avg_requested, 2),
+                    "avg_awarded": round(avg_awarded, 2),
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to get outputs stats: {e}")
+            raise
+
+    async def search_outputs(
+        self,
+        query: str,
+        output_type: Optional[List[str]] = None,
+        status: Optional[List[str]] = None,
+        skip: int = 0,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Full-text search on outputs
+
+        Args:
+            query: Search query (searches title, content, funder_name, success_notes)
+            output_type: Filter by output types
+            status: Filter by statuses
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+
+        Returns:
+            List of matching output data dictionaries
+        """
+        if not self.pool:
+            await self.connect()
+
+        # Build conditions
+        conditions = [
+            "(title ILIKE $1 OR content ILIKE $1 OR funder_name ILIKE $1 OR success_notes ILIKE $1)"
+        ]
+        params = [f"%{query}%"]
+        param_idx = 2
+
+        if output_type:
+            placeholders = ", ".join([f"${param_idx + i}" for i in range(len(output_type))])
+            conditions.append(f"output_type IN ({placeholders})")
+            params.extend(output_type)
+            param_idx += len(output_type)
+
+        if status:
+            placeholders = ", ".join([f"${param_idx + i}" for i in range(len(status))])
+            conditions.append(f"status IN ({placeholders})")
+            params.extend(status)
+            param_idx += len(status)
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+
+        sql_query = f"""
+            SELECT
+                output_id, conversation_id, output_type, title, content,
+                word_count, status, writing_style_id, funder_name,
+                requested_amount, awarded_amount, submission_date, decision_date,
+                success_notes, metadata, created_by, created_at, updated_at
+            FROM outputs
+            {where_clause}
+            ORDER BY created_at DESC
+            OFFSET ${param_idx} LIMIT ${param_idx + 1}
+        """
+
+        params.extend([skip, limit])
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(sql_query, *params)
+
+                outputs = []
+                for row in rows:
+                    outputs.append({
+                        "output_id": str(row["output_id"]),
+                        "conversation_id": str(row["conversation_id"]) if row["conversation_id"] else None,
+                        "output_type": row["output_type"],
+                        "title": row["title"],
+                        "content": row["content"],
+                        "word_count": row["word_count"],
+                        "status": row["status"],
+                        "writing_style_id": str(row["writing_style_id"]) if row["writing_style_id"] else None,
+                        "funder_name": row["funder_name"],
+                        "requested_amount": float(row["requested_amount"]) if row["requested_amount"] else None,
+                        "awarded_amount": float(row["awarded_amount"]) if row["awarded_amount"] else None,
+                        "submission_date": row["submission_date"].isoformat() if row["submission_date"] else None,
+                        "decision_date": row["decision_date"].isoformat() if row["decision_date"] else None,
+                        "success_notes": row["success_notes"],
+                        "metadata": row["metadata"],
+                        "created_by": row["created_by"],
+                        "created_at": row["created_at"].isoformat(),
+                        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                    })
+
+                return outputs
+
+        except Exception as e:
+            logger.error(f"Failed to search outputs: {e}")
+            raise
+
 
 # Singleton instance
 _db_service: Optional[DatabaseService] = None
