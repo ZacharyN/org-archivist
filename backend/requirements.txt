@@ -1,4 +1,5 @@
 ﻿aiohappyeyeballs==2.6.1
+email-validator==2.1.0
 aiohttp==3.13.1
 aiolimiter==1.2.1
 aiosignal==1.4.0

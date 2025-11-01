@@ -6,15 +6,18 @@ Provides shared instances of services and clients:
 - Vector store (Qdrant)
 - Embedding model
 - Query cache
+- Authentication dependencies for endpoint protection
 
 This module uses the singleton pattern for expensive resources.
 """
 import logging
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Callable
 
+from fastapi import Header, HTTPException, status, Depends
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.embeddings.voyageai import VoyageEmbedding
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.config import get_settings
 from app.services.vector_store import QdrantStore, VectorStoreConfig
@@ -27,6 +30,8 @@ from app.services.document_processor import DocumentProcessor, ProcessorFactory,
 from app.services.extractors.pdf_extractor import PDFExtractor
 from app.services.extractors.docx_extractor import DOCXExtractor
 from app.services.extractors.txt_extractor import TXTExtractor
+from app.services.auth_service import AuthService
+from app.db.models import User, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -347,3 +352,208 @@ async def get_database() -> DatabaseService:
     if not db.pool:
         await db.connect()
     return db
+
+
+# ==========================================
+# Authentication Dependencies
+# ==========================================
+
+# Lazy initialization of auth database engine
+_auth_engine = None
+_auth_session_maker = None
+
+
+def _get_auth_engine():
+    """Lazy initialize auth database engine"""
+    global _auth_engine, _auth_session_maker
+    if _auth_engine is None:
+        settings = get_settings()
+        _auth_engine = create_async_engine(settings.database_url)
+        _auth_session_maker = async_sessionmaker(_auth_engine, class_=AsyncSession, expire_on_commit=False)
+    return _auth_session_maker
+
+
+async def get_auth_db():
+    """Dependency for getting async database session for auth"""
+    session_maker = _get_auth_engine()
+    async with session_maker() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_auth_db)
+) -> User:
+    """
+    FastAPI dependency for getting the current authenticated user from Authorization header
+
+    Validates session token and returns User model. Raises HTTPException for invalid tokens.
+
+    Args:
+        authorization: Authorization header with "Bearer <token>" format
+        db: Database session
+
+    Returns:
+        User object if authenticated
+
+    Raises:
+        HTTPException: 401 if authentication fails
+
+    Usage:
+        @router.get("/protected")
+        async def protected_endpoint(current_user: User = Depends(get_current_user)):
+            return {"user": current_user.email}
+    """
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Parse Bearer token
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format. Expected: Bearer <token>",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = parts[1]
+
+    # Validate session and get user
+    user = await AuthService.validate_session(db, token)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
+
+
+async def get_current_active_user(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """
+    FastAPI dependency that ensures the current user is active
+
+    Args:
+        current_user: Current authenticated user (from get_current_user dependency)
+
+    Returns:
+        User object if user is active
+
+    Raises:
+        HTTPException: 403 if user is not active
+
+    Usage:
+        @router.post("/create-content")
+        async def create_content(current_user: User = Depends(get_current_active_user)):
+            # Only active users can access this endpoint
+            return {"message": "Content created"}
+    """
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is not active"
+        )
+
+    return current_user
+
+
+def require_role(required_role: str) -> Callable:
+    """
+    Factory function for role-based access control
+
+    Returns a dependency that checks if the user has the required role or higher.
+    Role hierarchy: ADMIN > EDITOR > WRITER
+
+    Args:
+        required_role: Required role as string ("admin", "editor", or "writer")
+
+    Returns:
+        FastAPI dependency function that validates user role
+
+    Raises:
+        HTTPException: 403 if user doesn't have required permissions
+
+    Usage:
+        @router.post("/admin-only")
+        async def admin_endpoint(current_user: User = Depends(require_role("admin"))):
+            return {"action": "performed"}
+
+        @router.put("/edit-content")
+        async def edit_content(current_user: User = Depends(require_role("editor"))):
+            # Admins and editors can access this
+            return {"message": "Content updated"}
+    """
+    # Convert string to UserRole enum
+    role_map = {
+        "admin": UserRole.ADMIN,
+        "editor": UserRole.EDITOR,
+        "writer": UserRole.WRITER
+    }
+
+    role_enum = role_map.get(required_role.lower())
+    if not role_enum:
+        raise ValueError(f"Invalid role: {required_role}. Must be one of: admin, editor, writer")
+
+    async def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
+        """Check if user has required role"""
+        if not AuthService.has_role(current_user, role_enum):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Insufficient permissions. Required role: {required_role}"
+            )
+        return current_user
+
+    return role_checker
+
+
+async def get_optional_user(
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_auth_db)
+) -> Optional[User]:
+    """
+    FastAPI dependency for getting the current user if authenticated, None otherwise
+
+    Unlike get_current_user, this does not raise an exception if user is not authenticated.
+    Useful for endpoints that have different behavior for authenticated vs. anonymous users.
+
+    Args:
+        authorization: Optional Authorization header with "Bearer <token>" format
+        db: Database session
+
+    Returns:
+        User object if authenticated, None otherwise
+
+    Usage:
+        @router.get("/public-or-private")
+        async def mixed_endpoint(current_user: Optional[User] = Depends(get_optional_user)):
+            if current_user:
+                return {"message": f"Hello {current_user.email}"}
+            return {"message": "Hello anonymous user"}
+    """
+    if not authorization:
+        return None
+
+    # Parse Bearer token
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+
+    token = parts[1]
+
+    # Validate session and get user
+    try:
+        user = await AuthService.validate_session(db, token)
+        return user
+    except Exception:
+        return None

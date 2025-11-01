@@ -2,7 +2,7 @@
 Authentication and authorization middleware for FastAPI
 """
 
-from backend.app.middleware.auth import (
+from app.middleware.auth import (
     get_current_user,
     get_current_active_user,
     require_role,
