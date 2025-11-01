@@ -11,10 +11,12 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UUID,
@@ -295,4 +297,51 @@ class WritingStyle(Base):
         Index("idx_writing_styles_type", "type"),
         Index("idx_writing_styles_active", "active"),
         Index("idx_writing_styles_created_by", "created_by"),
+    )
+
+
+class Output(Base):
+    """Outputs table - stores generated grant content with success tracking"""
+
+    __tablename__ = "outputs"
+
+    output_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.conversation_id", ondelete="SET NULL"), nullable=True)
+    output_type = Column(String(50), nullable=False)
+    title = Column(String(500), nullable=False)
+    content = Column(Text, nullable=False)
+    word_count = Column(Integer)
+    status = Column(String(50), nullable=False, default="draft")
+    writing_style_id = Column(UUID(as_uuid=True), ForeignKey("writing_styles.style_id", ondelete="SET NULL"), nullable=True)
+    funder_name = Column(String(255))
+    requested_amount = Column(Numeric(12, 2))
+    awarded_amount = Column(Numeric(12, 2))
+    submission_date = Column(Date)
+    decision_date = Column(Date)
+    success_notes = Column(Text)
+    output_metadata = Column("metadata", JSONB)  # Renamed in model, maps to 'metadata' column
+    created_by = Column(String(100))
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    conversation = relationship("Conversation")
+    writing_style = relationship("WritingStyle")
+
+    # Constraints
+    __table_args__ = (
+        CheckConstraint(
+            "output_type IN ('grant_proposal', 'budget_narrative', 'program_description', 'impact_summary', 'other')",
+            name="valid_output_type"
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'submitted', 'pending', 'awarded', 'not_awarded')",
+            name="valid_status"
+        ),
+        Index("idx_outputs_conversation_id", "conversation_id"),
+        Index("idx_outputs_output_type", "output_type"),
+        Index("idx_outputs_status", "status"),
+        Index("idx_outputs_writing_style_id", "writing_style_id"),
+        Index("idx_outputs_created_by", "created_by"),
+        Index("idx_outputs_created_at", "created_at"),
     )
