@@ -110,7 +110,7 @@ metrics_middleware = configure_middleware(app)
 configure_exception_handlers(app)
 
 # Register API routers
-from app.api import query, chat, prompts, config, documents, writing_styles, auth
+from app.api import query, chat, prompts, config, documents, writing_styles, auth, outputs
 
 app.include_router(auth.router)
 app.include_router(query.router)
@@ -119,6 +119,7 @@ app.include_router(prompts.router)
 app.include_router(config.router)
 app.include_router(documents.router)
 app.include_router(writing_styles.router)
+app.include_router(outputs.router)
 
 
 # Health check endpoint
