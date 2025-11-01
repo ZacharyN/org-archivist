@@ -29,6 +29,7 @@ from ..models.output import (
 )
 from ..models.common import ErrorResponse
 from ..services.database import get_database_service
+from ..services.success_tracking import SuccessTrackingService, StatusTransitionError
 from ..api.auth import get_current_user_from_token, get_db
 from ..db.models import User, UserRole
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -423,12 +424,33 @@ async def update_output(
         HTTPException: If not found, permission denied, or update fails
     """
     # Check permissions
-    await check_output_permission(output_id, user, action="edit")
+    output_data = await check_output_permission(output_id, user, action="edit")
 
     try:
         logger.info(f"Updating output {output_id} by user {user.email}")
 
         db = get_database_service()
+        success_tracking = SuccessTrackingService(db)
+
+        # Validate status transition if status is being updated
+        if request.status is not None:
+            current_status = output_data["status"]
+            new_status = request.status.value
+
+            # Admins can override status transitions
+            allow_override = user.role == UserRole.ADMIN
+
+            try:
+                success_tracking.validate_status_transition(
+                    current_status,
+                    new_status,
+                    allow_override=allow_override
+                )
+            except StatusTransitionError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=str(e)
+                )
 
         # Build update dict from request (only non-None fields)
         updates = {}
@@ -459,6 +481,20 @@ async def update_output(
         if request.metadata is not None:
             updates["metadata"] = request.metadata
 
+        # Validate outcome data and log warnings
+        if request.status is not None:
+            warnings = success_tracking.validate_outcome_data(
+                status=request.status.value,
+                funder_name=request.funder_name or output_data.get("funder_name"),
+                requested_amount=request.requested_amount or output_data.get("requested_amount"),
+                awarded_amount=request.awarded_amount or output_data.get("awarded_amount"),
+                submission_date=request.submission_date or output_data.get("submission_date"),
+                decision_date=request.decision_date or output_data.get("decision_date"),
+            )
+
+            if warnings:
+                logger.warning(f"Output {output_id} data validation warnings: {warnings}")
+
         # Perform update
         result = await db.update_output(output_id, **updates)
 
@@ -477,6 +513,11 @@ async def update_output(
 
     except HTTPException:
         raise
+    except StatusTransitionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
     except Exception as e:
         logger.error(f"Failed to update output {output_id}: {e}")
         raise HTTPException(
@@ -549,4 +590,293 @@ async def delete_output(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete output: {str(e)}"
+        )
+
+
+# ======================
+# Success Tracking & Analytics Endpoints
+# ======================
+
+
+@router.get(
+    "/analytics/style/{style_id}",
+    response_model=dict,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Get success rate by writing style",
+    description="""
+    Calculate success rate for outputs using a specific writing style.
+
+    Returns metrics including:
+    - Total outputs using the style
+    - Number submitted, awarded, not awarded
+    - Success rate percentage
+    - Total and average amounts
+
+    Permissions:
+    - All authenticated users can access this endpoint
+    """,
+)
+async def get_success_rate_by_style(
+    style_id: UUID,
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    user: User = Depends(get_current_user_from_token)
+) -> dict:
+    """
+    Get success rate for a writing style
+
+    Args:
+        style_id: Writing style UUID
+        start_date: Optional start date filter
+        end_date: Optional end date filter
+        user: Current authenticated user
+
+    Returns:
+        Success rate metrics for the style
+    """
+    try:
+        db = get_database_service()
+        success_tracking = SuccessTrackingService(db)
+
+        metrics = await success_tracking.calculate_success_rate_by_style(
+            style_id=style_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"Failed to get success rate by style {style_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get success rate by style: {str(e)}"
+        )
+
+
+@router.get(
+    "/analytics/funder/{funder_name}",
+    response_model=dict,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Get success rate by funder",
+    description="""
+    Calculate success rate for a specific funder.
+
+    Returns metrics including:
+    - Total outputs submitted to funder
+    - Number awarded, not awarded
+    - Success rate percentage
+    - Total and average award amounts
+
+    Permissions:
+    - All authenticated users can access this endpoint
+    """,
+)
+async def get_success_rate_by_funder(
+    funder_name: str,
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    user: User = Depends(get_current_user_from_token)
+) -> dict:
+    """
+    Get success rate for a funder
+
+    Args:
+        funder_name: Funder name (partial match)
+        start_date: Optional start date filter
+        end_date: Optional end date filter
+        user: Current authenticated user
+
+    Returns:
+        Success rate metrics for the funder
+    """
+    try:
+        db = get_database_service()
+        success_tracking = SuccessTrackingService(db)
+
+        metrics = await success_tracking.calculate_success_rate_by_funder(
+            funder_name=funder_name,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"Failed to get success rate by funder {funder_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get success rate by funder: {str(e)}"
+        )
+
+
+@router.get(
+    "/analytics/year/{year}",
+    response_model=dict,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Get success rate by year",
+    description="""
+    Calculate success rate for outputs in a specific year.
+
+    Returns metrics including:
+    - Total outputs submitted in the year
+    - Number awarded, not awarded
+    - Success rate percentage
+    - Total and average award amounts
+
+    Permissions:
+    - All authenticated users can access this endpoint
+    """,
+)
+async def get_success_rate_by_year(
+    year: int,
+    user: User = Depends(get_current_user_from_token)
+) -> dict:
+    """
+    Get success rate for a specific year
+
+    Args:
+        year: Year to analyze
+        user: Current authenticated user
+
+    Returns:
+        Success rate metrics for the year
+    """
+    try:
+        db = get_database_service()
+        success_tracking = SuccessTrackingService(db)
+
+        metrics = await success_tracking.calculate_success_rate_by_year(year=year)
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"Failed to get success rate by year {year}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get success rate by year: {str(e)}"
+        )
+
+
+@router.get(
+    "/analytics/summary",
+    response_model=dict,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Get comprehensive success metrics summary",
+    description="""
+    Get comprehensive success metrics including:
+    - Overall statistics (from /stats endpoint)
+    - Top performing writing styles
+    - Top funders by success rate
+    - Year-over-year trends
+
+    Permissions:
+    - Writers: See summary for their own outputs
+    - Editors/Admins: See summary for all outputs
+
+    This is a comprehensive dashboard-ready endpoint.
+    """,
+)
+async def get_success_metrics_summary(
+    user: User = Depends(get_current_user_from_token)
+) -> dict:
+    """
+    Get comprehensive success metrics summary
+
+    Args:
+        user: Current authenticated user
+
+    Returns:
+        Comprehensive metrics summary
+    """
+    try:
+        db = get_database_service()
+        success_tracking = SuccessTrackingService(db)
+
+        # Writers can only see their own metrics
+        created_by_filter = user.email if user.role == UserRole.WRITER else None
+
+        metrics = await success_tracking.get_success_metrics_summary(
+            created_by=created_by_filter
+        )
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"Failed to get success metrics summary: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get success metrics summary: {str(e)}"
+        )
+
+
+@router.get(
+    "/analytics/funders",
+    response_model=List[dict],
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Get funder performance metrics",
+    description="""
+    Get performance metrics for all funders, ordered by success rate.
+
+    Returns list of funders with:
+    - Total submissions
+    - Award/rejection/pending counts
+    - Success rate percentage
+    - Total and average award amounts
+
+    Permissions:
+    - Writers: See funders they've submitted to
+    - Editors/Admins: See all funders
+
+    Useful for identifying which funders to prioritize.
+    """,
+)
+async def get_funder_performance(
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of funders"),
+    user: User = Depends(get_current_user_from_token)
+) -> List[dict]:
+    """
+    Get performance metrics for funders
+
+    Args:
+        limit: Maximum number of funders to return
+        user: Current authenticated user
+
+    Returns:
+        List of funder performance metrics
+    """
+    try:
+        db = get_database_service()
+        success_tracking = SuccessTrackingService(db)
+
+        # Writers can only see their own funder performance
+        created_by_filter = user.email if user.role == UserRole.WRITER else None
+
+        funders = await success_tracking.get_funder_performance(
+            limit=limit,
+            created_by=created_by_filter,
+        )
+
+        return funders
+
+    except Exception as e:
+        logger.error(f"Failed to get funder performance: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get funder performance: {str(e)}"
         )
