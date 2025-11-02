@@ -368,7 +368,7 @@ class TestListAndFiltering:
         await db_service.create_writing_style(
             style_id=style_id,
             name="Test Style",
-            style_type="formal",
+            style_type="proposal",
             prompt_content="Write in a formal style",
             description="Test writing style for output filtering"
         )
