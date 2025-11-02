@@ -27,28 +27,39 @@ from backend.app.services.success_tracking import (
 
 @pytest.fixture
 def mock_conn():
-    """Mock database connection"""
-    return AsyncMock()
+    """Mock database connection with pre-configured methods"""
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock()
+    conn.fetch = AsyncMock()
+    conn.execute = AsyncMock()
+    return conn
 
 
 @pytest.fixture
 def mock_database_service(mock_conn):
-    """Mock DatabaseService for service layer tests"""
+    """Mock DatabaseService with proper async context manager"""
     mock_db = AsyncMock()
 
-    # Mock context manager for pool.acquire()
-    mock_acquire = AsyncMock()
-    mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_acquire.__aexit__ = AsyncMock(return_value=None)
+    # Create proper async context manager class
+    class MockPoolAcquire:
+        """Async context manager for pool.acquire()"""
+        def __init__(self, connection):
+            self.connection = connection
 
-    # Mock pool with acquire returning the context manager
-    mock_pool = MagicMock()
-    mock_pool.acquire.return_value = mock_acquire
+        async def __aenter__(self):
+            return self.connection
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            return None
+
+    # Mock pool with proper context manager
+    mock_pool = Mock()
+    mock_pool.acquire = Mock(return_value=MockPoolAcquire(mock_conn))
 
     mock_db.pool = mock_pool
 
     # Mock get_outputs_stats method
-    mock_db.get_outputs_stats = AsyncMock(return_value={)
+    mock_db.get_outputs_stats = AsyncMock(return_value={
         "total_outputs": 10,
         "by_status": {"draft": 2, "submitted": 3, "awarded": 5},
         "by_type": {"grant_proposal": 8, "research_article": 2},
@@ -531,7 +542,7 @@ class TestSummaryMetrics:
         assert result["top_funders"][0]["total_awarded"] == 500000.00
 
     @pytest.mark.asyncio
-    async def test_get_success_metrics_summary_role_filtering(self, success_service, mock_conn):
+    async def test_get_success_metrics_summary_role_filtering(self, success_service, mock_conn, mock_database_service):
         """Test writers see only their data"""
         # Connection already provided via fixture
         mock_conn.fetch.return_value = []
