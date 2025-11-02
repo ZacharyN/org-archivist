@@ -366,8 +366,10 @@ class TestListAndFiltering:
         # Create a writing style first (to satisfy foreign key constraint)
         style_id = uuid4()
         await db_service.create_writing_style(
-            writing_style_id=style_id,
+            style_id=style_id,
             name="Test Style",
+            style_type="formal",
+            prompt_content="Write in a formal style",
             description="Test writing style for output filtering"
         )
 
