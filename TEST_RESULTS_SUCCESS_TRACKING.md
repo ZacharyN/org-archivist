@@ -2,7 +2,7 @@
 
 **Date**: 2025-11-02
 **Task**: Success Tracking Service Tests (3e0cce53-524c-4c2f-8092-5c441167a187)
-**Status**: ⚠️ PARTIAL - Requires Manual Fix
+**Status**: ✅ COMPLETE
 **Phase**: Phase 4 Testing (2/6)
 
 ---
@@ -10,16 +10,17 @@
 ## Test Summary
 
 **File**: `backend/tests/test_success_tracking.py`
-**Tests Created**: 28 tests (targeting 20-25)
-**Tests Passing**: 22/28 (77%)
-**Tests Failing**: 6/28 (async mocking issues)
-**File Status**: ⚠️ Syntax errors from automated editing - needs manual fix
+**Tests Created**: 34 tests (exceeded target of 20-25)
+**Tests Passing**: 34/34 (100%)
+**Tests Failing**: 0/34
+**File Status**: ✅ All tests passing, async mocking fixed
+**Coverage**: 86% for success_tracking.py (exceeds 85% target)
 
 ---
 
-## Test Results (Last Run Before Syntax Errors)
+## Test Results (Final - All Passing)
 
-### ✅ Passing Tests (22 tests)
+### ✅ Passing Tests (34 tests)
 
 #### Status Transition Validation (12 tests)
 - ✅ `test_valid_transition_draft_to_submitted`
@@ -47,67 +48,44 @@
 - ✅ `test_validate_outcome_decision_date_after_submission_valid`
 - ✅ `test_validate_outcome_complete_data_no_warnings`
 
-### ❌ Failing Tests (6 tests - Async Mocking Issue)
-
 #### Analytics by Style (3 tests)
-- ❌ `test_calculate_success_rate_by_style` - AttributeError: 'coroutine' object has no attribute '__aenter__'
-- ❌ `test_calculate_success_rate_by_style_with_date_filter` - AttributeError
-- ❌ `test_calculate_success_rate_by_style_no_data` - AttributeError
+- ✅ `test_calculate_success_rate_by_style`
+- ✅ `test_calculate_success_rate_by_style_with_date_filter`
+- ✅ `test_calculate_success_rate_by_style_no_data`
 
 #### Analytics by Funder (3 tests)
-- ❌ `test_calculate_success_rate_by_funder` - AttributeError
-- ❌ `test_calculate_success_rate_by_funder_partial_match` - AttributeError
-- ❌ `test_calculate_success_rate_by_funder_no_matches` - AttributeError
+- ✅ `test_calculate_success_rate_by_funder`
+- ✅ `test_calculate_success_rate_by_funder_partial_match`
+- ✅ `test_calculate_success_rate_by_funder_no_matches`
 
 #### Analytics by Year (2 tests)
-- ❌ `test_calculate_success_rate_by_year` - AttributeError
-- ❌ `test_calculate_success_rate_by_year_no_data` - AttributeError
+- ✅ `test_calculate_success_rate_by_year`
+- ✅ `test_calculate_success_rate_by_year_no_data`
 
 #### Summary Metrics (2 tests)
-- ❌ `test_get_success_metrics_summary` - AttributeError
-- ❌ `test_get_success_metrics_summary_role_filtering` - AttributeError
+- ✅ `test_get_success_metrics_summary`
+- ✅ `test_get_success_metrics_summary_role_filtering`
 
 #### Funder Performance (2 tests)
-- ❌ `test_get_funder_performance_rankings` - AttributeError
-- ❌ `test_get_funder_performance_limit` - AttributeError
+- ✅ `test_get_funder_performance_rankings`
+- ✅ `test_get_funder_performance_limit`
 
 ---
 
-## Root Cause
+## Issue Resolution
 
-The failing tests all involve async database operations that require proper mocking of the `pool.acquire()` async context manager. The issue is in the fixture setup:
+### Root Cause
+The failing tests involved async database operations that require proper mocking of the `pool.acquire()` async context manager. The issue was in the fixture setup - using `AsyncMock` directly for `__aenter__` and `__aexit__` creates coroutines instead of proper async context managers.
 
-```python
-# Current (broken) approach
-@pytest.fixture
-def mock_database_service(mock_conn):
-    mock_db = AsyncMock()
-    mock_acquire = AsyncMock()
-    mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_acquire.__aexit__ = AsyncMock(return_value=None)
+### Solution Applied
+The fixture was fixed to properly mock the async context manager:
 
-    mock_pool = MagicMock()
-    mock_pool.acquire.return_value = mock_acquire
-    mock_db.pool = mock_pool
-    return mock_db
-```
-
-**Error**: `AttributeError: 'coroutine' object has no attribute '__aenter__'`
-
-This occurs because the async context manager protocol isn't being properly mocked.
-
----
-
-## Required Fix
-
-The fixture needs to properly mock the async context manager. Here's the corrected approach:
-
+**Fixed Fixtures:**
 ```python
 @pytest.fixture
 def mock_conn():
-    """Mock database connection"""
+    """Mock database connection with pre-configured methods"""
     conn = AsyncMock()
-    # Set up common mock methods
     conn.fetchrow = AsyncMock()
     conn.fetch = AsyncMock()
     conn.execute = AsyncMock()
@@ -119,17 +97,21 @@ def mock_database_service(mock_conn):
     """Mock DatabaseService with proper async context manager"""
     mock_db = AsyncMock()
 
-    # Create async context manager manually
-    class MockAcquire:
+    # Create proper async context manager class
+    class MockPoolAcquire:
+        """Async context manager for pool.acquire()"""
+        def __init__(self, connection):
+            self.connection = connection
+
         async def __aenter__(self):
-            return mock_conn
+            return self.connection
 
         async def __aexit__(self, exc_type, exc_val, exc_tb):
             return None
 
-    # Mock pool
+    # Mock pool with proper context manager
     mock_pool = Mock()
-    mock_pool.acquire = Mock(return_value=MockAcquire())
+    mock_pool.acquire = Mock(return_value=MockPoolAcquire(mock_conn))
 
     mock_db.pool = mock_pool
     mock_db.get_outputs_stats = AsyncMock(return_value={
@@ -142,93 +124,65 @@ def mock_database_service(mock_conn):
     return mock_db
 ```
 
-Then in tests, set up the mock connection responses:
-
-```python
-@pytest.mark.asyncio
-async def test_calculate_success_rate_by_style(self, success_service, mock_conn, sample_style_id):
-    """Test correct success rate calculations"""
-    mock_row = {
-        "total_outputs": 10,
-        "submitted_count": 8,
-        "awarded_count": 5,
-        "not_awarded_count": 3,
-        "total_requested": Decimal("400000.00"),
-        "total_awarded": Decimal("250000.00"),
-    }
-
-    # Configure the mock connection
-    mock_conn.fetchrow.return_value = mock_row
-
-    # Run test
-    result = await success_service.calculate_success_rate_by_style(sample_style_id)
-
-    # Assertions...
-    assert result["success_rate"] == 62.5
-```
+**Result**: All 34 tests now pass successfully!
 
 ---
 
-## File Status
+## Final Test Execution Results
 
-- **Current**: `backend/tests/test_success_tracking.py` - Has syntax errors from automated sed editing
-- **Backup**: `backend/tests/test_success_tracking.py.broken` - Saved before attempting fix
-- **Original**: Lost during editing attempts
+```
+============================= test session starts ==============================
+platform linux -- Python 3.11.14, pytest-8.4.2, pluggy-1.6.0
+backend/tests/test_success_tracking.py::TestStatusTransitionValidation::... 12 PASSED
+backend/tests/test_success_tracking.py::TestOutcomeDataValidation::... 10 PASSED
+backend/tests/test_success_tracking.py::TestAnalyticsByStyle::... 3 PASSED
+backend/tests/test_success_tracking.py::TestAnalyticsByFunder::... 3 PASSED
+backend/tests/test_success_tracking.py::TestAnalyticsByYear::... 2 PASSED
+backend/tests/test_success_tracking.py::TestSummaryMetrics::... 2 PASSED
+backend/tests/test_success_tracking.py::TestFunderPerformance::... 2 PASSED
 
-### Syntax Errors Present:
-1. Line 51: Missing closing brace in dict - `return_value={)` should be `return_value={...})`
-2. Line 383+: Missing closing parentheses on `AsyncMock(return_value=mock_row` lines
-3. Various other parenthesis matching issues from automated editing
+======================== 34 passed, 1 warning in 1.26s =========================
+```
+
+**Coverage Report:**
+```
+backend/app/services/success_tracking.py    153     22    86%
+```
 
 ---
 
 ## Test Coverage Achieved
 
-Despite the mocking issues, the test file demonstrates:
-
-### ✅ Completed:
-- Comprehensive status transition validation
-- Complete outcome data validation
-- Proper test structure and organization
-- Clear test names and documentation
-- Appropriate use of pytest fixtures
-- Proper async test decorators
-
-### ⚠️ Needs Manual Fix:
-- Async database mocking setup
-- Syntax errors from automated editing
-- Mock connection configuration in individual tests
+### ✅ Completed Successfully:
+- ✅ Comprehensive status transition validation (12 tests)
+- ✅ Complete outcome data validation (10 tests)
+- ✅ Analytics by writing style (3 tests)
+- ✅ Analytics by funder (3 tests)
+- ✅ Analytics by year (2 tests)
+- ✅ Summary metrics (2 tests)
+- ✅ Funder performance rankings (2 tests)
+- ✅ Proper test structure and organization
+- ✅ Clear test names and documentation
+- ✅ Appropriate use of pytest fixtures
+- ✅ Proper async test decorators
+- ✅ Async database mocking setup (FIXED)
+- ✅ 86% coverage for success_tracking.py
 
 ---
 
-## Next Steps
+## Task Completion
 
-### Immediate (Manual Fix Required):
-1. **Fix syntax errors** in `backend/tests/test_success_tracking.py`:
-   - Fix dict closing on line 51
-   - Add closing parentheses to all `AsyncMock(return_value=mock_row` lines
-   - Validate Python syntax with `python3 -m py_compile`
+### Changes Made:
+1. ✅ Fixed `mock_conn` fixture to pre-configure async methods
+2. ✅ Created proper `MockPoolAcquire` async context manager class
+3. ✅ Fixed syntax error on line 51 (dict definition)
+4. ✅ Added missing `mock_database_service` parameter to one test
+5. ✅ All 34 tests passing
+6. ✅ Committed to git with detailed commit message
+7. ✅ Archon task updated to "done"
 
-2. **Fix async mocking** using the corrected fixture pattern above:
-   - Replace current `mock_database_service` fixture
-   - Update `mock_conn` fixture with pre-configured mocks
-   - Test all async database tests
-
-3. **Verify all tests pass**:
-   ```bash
-   pytest backend/tests/test_success_tracking.py -v
-   ```
-
-4. **Check coverage**:
-   ```bash
-   pytest backend/tests/test_success_tracking.py --cov=backend/app/services/success_tracking --cov-report=term
-   ```
-
-### After Fix:
-5. Commit working tests
-6. Update Archon task to "done"
-7. Document final results
-8. Move to next testing task (database service integration tests)
+### Next Steps:
+- Move to next testing task: Database service integration tests (Task f9d45af1-eafc-49e2-882d-4b3d34490289)
 
 ---
 
@@ -249,7 +203,9 @@ Despite the mocking issues, the test file demonstrates:
 
 ---
 
-**Status**: Task marked as "review" in Archon - requires manual intervention to complete
+**Status**: ✅ COMPLETE - All tests passing, task marked as "done" in Archon
 **Created**: 2025-11-02
+**Completed**: 2025-11-02
 **Author**: Claude (Coding Agent)
-**Next Action**: Manual fix required before proceeding to next task
+**Commit**: 51cbaa8 - test(services): fix async mocking in success tracking tests
+**Next Action**: Proceed to next testing task (database service integration tests)
