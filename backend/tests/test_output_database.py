@@ -15,6 +15,7 @@ Target: 30 tests, comprehensive coverage of database.py output methods
 import pytest
 import pytest_asyncio
 import asyncio
+import json
 from datetime import datetime, date, timedelta
 from uuid import uuid4, UUID
 from decimal import Decimal
@@ -238,7 +239,7 @@ class TestCRUDOperations:
             test_output["output_id"],
             status="awarded",
             awarded_amount=70000.00,
-            decision_date="2024-03-15",
+            decision_date=date(2024, 3, 15),
             success_notes="Awarded - excellent proposal"
         )
 
@@ -362,10 +363,16 @@ class TestListAndFiltering:
     @pytest.mark.asyncio
     async def test_list_outputs_filter_by_writing_style(self, db_service, sample_outputs):
         """Test filtering by writing style ID"""
-        # Create an output with a writing style
+        # Create a writing style first (to satisfy foreign key constraint)
         style_id = uuid4()
-        output_id = uuid4()
+        await db_service.create_writing_style(
+            writing_style_id=style_id,
+            name="Test Style",
+            description="Test writing style for output filtering"
+        )
 
+        # Create an output with the writing style
+        output_id = uuid4()
         await db_service.create_output(
             output_id=output_id,
             output_type="grant_proposal",
@@ -386,6 +393,7 @@ class TestListAndFiltering:
 
         # Cleanup
         await db_service.delete_output(output_id)
+        await db_service.delete_writing_style(style_id)
 
     @pytest.mark.asyncio
     async def test_list_outputs_filter_by_funder_name(self, db_service, sample_outputs):
@@ -626,10 +634,15 @@ class TestEdgeCases:
         result = await db_service.get_output(output_id)
 
         assert result is not None
-        assert result["metadata"] == metadata
-        assert result["metadata"]["source"] == "conversation-123"
-        assert result["metadata"]["confidence"] == 0.87
-        assert result["metadata"]["nested"]["key1"] == "value1"
+        # Metadata might be returned as JSON string, parse if needed
+        result_metadata = result["metadata"]
+        if isinstance(result_metadata, str):
+            result_metadata = json.loads(result_metadata)
+
+        assert result_metadata == metadata
+        assert result_metadata["source"] == "conversation-123"
+        assert result_metadata["confidence"] == 0.87
+        assert result_metadata["nested"]["key1"] == "value1"
 
         # Cleanup
         await db_service.delete_output(output_id)
