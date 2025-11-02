@@ -22,6 +22,7 @@ Tests cover:
 
 import pytest
 from datetime import datetime, date
+from contextlib import asynccontextmanager
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -36,6 +37,13 @@ from backend.app.services.auth_service import AuthService
 
 # Test database URL (uses in-memory SQLite for testing)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+# Mock lifespan context manager for tests
+@asynccontextmanager
+async def mock_lifespan(app):
+    """Mock lifespan that does nothing (no DB connection)"""
+    yield
 
 
 @pytest.fixture(scope="function")
@@ -248,10 +256,19 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as test_client:
-        yield test_client
+    # Disable lifespan during tests to avoid database connection issues
+    # The lifespan tries to connect to real PostgreSQL before override takes effect
+    # Save original lifespan and replace with mock that does nothing
+    original_router_lifespan = app.router.lifespan_context
+    app.router.lifespan_context = mock_lifespan
 
-    app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        # Restore original lifespan
+        app.router.lifespan_context = original_router_lifespan
+        app.dependency_overrides.clear()
 
 
 def get_auth_token(client, email, password):
@@ -273,8 +290,7 @@ def get_auth_token(client, email, password):
 class TestCreateOutput:
     """Test POST /api/outputs endpoint"""
 
-    @pytest.mark.asyncio
-    async def test_create_output_authenticated_user(self, client, test_users):
+    def test_create_output_authenticated_user(self, client, test_users):
         """Test successful output creation by authenticated user"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -298,8 +314,7 @@ class TestCreateOutput:
         assert data["created_by"] == "writer@test.com"
         assert "output_id" in data
 
-    @pytest.mark.asyncio
-    async def test_create_output_with_writing_style(self, client, test_users, test_writing_style):
+    def test_create_output_with_writing_style(self, client, test_users, test_writing_style):
         """Test creating output with writing style"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -321,8 +336,7 @@ class TestCreateOutput:
         data = response.json()
         assert data["writing_style_id"] == str(test_writing_style.writing_style_id)
 
-    @pytest.mark.asyncio
-    async def test_create_output_minimal_data(self, client, test_users):
+    def test_create_output_minimal_data(self, client, test_users):
         """Test creating output with only required fields"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -342,8 +356,7 @@ class TestCreateOutput:
         data = response.json()
         assert data["title"] == "Minimal"
 
-    @pytest.mark.asyncio
-    async def test_create_output_unauthenticated(self, client):
+    def test_create_output_unauthenticated(self, client):
         """Test creating output without authentication fails"""
         response = client.post(
             "/api/outputs",
@@ -357,8 +370,7 @@ class TestCreateOutput:
 
         assert response.status_code == 401
 
-    @pytest.mark.asyncio
-    async def test_create_output_validation_error(self, client, test_users):
+    def test_create_output_validation_error(self, client, test_users):
         """Test creating output with invalid data"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -385,8 +397,8 @@ class TestCreateOutput:
 class TestListOutputs:
     """Test GET /api/outputs endpoint"""
 
-    @pytest.mark.asyncio
-    async def test_list_outputs_as_writer(self, client, test_users, test_outputs):
+    
+    def test_list_outputs_as_writer(self, client, test_users, test_outputs):
         """Test that writers only see their own outputs"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -399,8 +411,8 @@ class TestListOutputs:
         for output in data["outputs"]:
             assert output["created_by"] == "writer@test.com"
 
-    @pytest.mark.asyncio
-    async def test_list_outputs_as_editor(self, client, test_users, test_outputs):
+    
+    def test_list_outputs_as_editor(self, client, test_users, test_outputs):
         """Test that editors see all outputs"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -411,8 +423,8 @@ class TestListOutputs:
         data = response.json()
         assert len(data["outputs"]) == 4  # All outputs visible
 
-    @pytest.mark.asyncio
-    async def test_list_outputs_as_admin(self, client, test_users, test_outputs):
+    
+    def test_list_outputs_as_admin(self, client, test_users, test_outputs):
         """Test that admins see all outputs"""
         token = get_auth_token(client, "admin@test.com", "AdminPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -423,8 +435,8 @@ class TestListOutputs:
         data = response.json()
         assert len(data["outputs"]) == 4  # All outputs visible
 
-    @pytest.mark.asyncio
-    async def test_list_outputs_with_type_filter(self, client, test_users, test_outputs):
+    
+    def test_list_outputs_with_type_filter(self, client, test_users, test_outputs):
         """Test filtering outputs by type"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -440,8 +452,8 @@ class TestListOutputs:
         for output in data["outputs"]:
             assert output["output_type"] == "grant_proposal"
 
-    @pytest.mark.asyncio
-    async def test_list_outputs_with_status_filter(self, client, test_users, test_outputs):
+    
+    def test_list_outputs_with_status_filter(self, client, test_users, test_outputs):
         """Test filtering outputs by status"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -456,8 +468,8 @@ class TestListOutputs:
         assert len(data["outputs"]) == 1
         assert data["outputs"][0]["status"] == "awarded"
 
-    @pytest.mark.asyncio
-    async def test_list_outputs_with_search_query(self, client, test_users, test_outputs):
+    
+    def test_list_outputs_with_search_query(self, client, test_users, test_outputs):
         """Test searching outputs by title/content"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -472,8 +484,8 @@ class TestListOutputs:
         assert len(data["outputs"]) >= 1
         # Should find the NSF grant
 
-    @pytest.mark.asyncio
-    async def test_list_outputs_pagination(self, client, test_users, test_outputs):
+    
+    def test_list_outputs_pagination(self, client, test_users, test_outputs):
         """Test pagination with skip and limit"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -488,8 +500,8 @@ class TestListOutputs:
         assert len(data["outputs"]) <= 2
         assert data["per_page"] == 2
 
-    @pytest.mark.asyncio
-    async def test_list_outputs_unauthenticated(self, client):
+    
+    def test_list_outputs_unauthenticated(self, client):
         """Test listing outputs without authentication fails"""
         response = client.get("/api/outputs")
         assert response.status_code == 401
@@ -503,8 +515,8 @@ class TestListOutputs:
 class TestGetStats:
     """Test GET /api/outputs/stats endpoint"""
 
-    @pytest.mark.asyncio
-    async def test_get_stats_as_writer(self, client, test_users, test_outputs):
+    
+    def test_get_stats_as_writer(self, client, test_users, test_outputs):
         """Test that writers get stats for their own outputs only"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -517,8 +529,8 @@ class TestGetStats:
         assert "by_type" in data
         assert "by_status" in data
 
-    @pytest.mark.asyncio
-    async def test_get_stats_as_editor(self, client, test_users, test_outputs):
+    
+    def test_get_stats_as_editor(self, client, test_users, test_outputs):
         """Test that editors get stats for all outputs"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -529,8 +541,8 @@ class TestGetStats:
         data = response.json()
         assert data["total_outputs"] == 4  # All outputs
 
-    @pytest.mark.asyncio
-    async def test_get_stats_with_type_filter(self, client, test_users, test_outputs):
+    
+    def test_get_stats_with_type_filter(self, client, test_users, test_outputs):
         """Test getting stats filtered by output type"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -544,8 +556,8 @@ class TestGetStats:
         data = response.json()
         assert data["total_outputs"] == 3  # Only grant proposals
 
-    @pytest.mark.asyncio
-    async def test_get_stats_success_rate_calculation(self, client, test_users, test_outputs):
+    
+    def test_get_stats_success_rate_calculation(self, client, test_users, test_outputs):
         """Test that success rate is calculated correctly"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -567,8 +579,8 @@ class TestGetStats:
 class TestGetOutput:
     """Test GET /api/outputs/{id} endpoint"""
 
-    @pytest.mark.asyncio
-    async def test_get_output_as_owner(self, client, test_users, test_outputs):
+    
+    def test_get_output_as_owner(self, client, test_users, test_outputs):
         """Test that owner can view their own output"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -580,8 +592,8 @@ class TestGetOutput:
         data = response.json()
         assert data["output_id"] == str(output_id)
 
-    @pytest.mark.asyncio
-    async def test_get_output_as_editor(self, client, test_users, test_outputs):
+    
+    def test_get_output_as_editor(self, client, test_users, test_outputs):
         """Test that editor can view any output"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -593,8 +605,8 @@ class TestGetOutput:
         data = response.json()
         assert data["output_id"] == str(output_id)
 
-    @pytest.mark.asyncio
-    async def test_get_output_as_admin(self, client, test_users, test_outputs):
+    
+    def test_get_output_as_admin(self, client, test_users, test_outputs):
         """Test that admin can view any output"""
         token = get_auth_token(client, "admin@test.com", "AdminPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -606,8 +618,8 @@ class TestGetOutput:
         data = response.json()
         assert data["output_id"] == str(output_id)
 
-    @pytest.mark.asyncio
-    async def test_get_output_as_other_writer(self, client, test_users, test_outputs):
+    
+    def test_get_output_as_other_writer(self, client, test_users, test_outputs):
         """Test that writer cannot view another writer's output"""
         token = get_auth_token(client, "writer2@test.com", "Writer2Pass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -617,8 +629,8 @@ class TestGetOutput:
 
         assert response.status_code == 403
 
-    @pytest.mark.asyncio
-    async def test_get_output_not_found(self, client, test_users):
+    
+    def test_get_output_not_found(self, client, test_users):
         """Test getting non-existent output returns 404"""
         token = get_auth_token(client, "admin@test.com", "AdminPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -637,8 +649,8 @@ class TestGetOutput:
 class TestUpdateOutput:
     """Test PUT /api/outputs/{id} endpoint"""
 
-    @pytest.mark.asyncio
-    async def test_update_output_as_owner(self, client, test_users, test_outputs):
+    
+    def test_update_output_as_owner(self, client, test_users, test_outputs):
         """Test that owner can update their own output"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -654,8 +666,8 @@ class TestUpdateOutput:
         data = response.json()
         assert data["title"] == "Updated Title"
 
-    @pytest.mark.asyncio
-    async def test_update_output_as_editor(self, client, test_users, test_outputs):
+    
+    def test_update_output_as_editor(self, client, test_users, test_outputs):
         """Test that editor can update any output"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -671,8 +683,8 @@ class TestUpdateOutput:
         data = response.json()
         assert data["title"] == "Editor Updated Title"
 
-    @pytest.mark.asyncio
-    async def test_update_output_as_admin(self, client, test_users, test_outputs):
+    
+    def test_update_output_as_admin(self, client, test_users, test_outputs):
         """Test that admin can update any output"""
         token = get_auth_token(client, "admin@test.com", "AdminPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -686,8 +698,8 @@ class TestUpdateOutput:
 
         assert response.status_code == 200
 
-    @pytest.mark.asyncio
-    async def test_update_output_as_other_writer(self, client, test_users, test_outputs):
+    
+    def test_update_output_as_other_writer(self, client, test_users, test_outputs):
         """Test that writer cannot update another writer's output"""
         token = get_auth_token(client, "writer2@test.com", "Writer2Pass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -701,8 +713,8 @@ class TestUpdateOutput:
 
         assert response.status_code == 403
 
-    @pytest.mark.asyncio
-    async def test_update_output_status_transition_valid(self, client, test_users, test_outputs):
+    
+    def test_update_output_status_transition_valid(self, client, test_users, test_outputs):
         """Test valid status transition is allowed"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -718,8 +730,8 @@ class TestUpdateOutput:
         data = response.json()
         assert data["status"] == "submitted"
 
-    @pytest.mark.asyncio
-    async def test_update_output_status_transition_invalid(self, client, test_users, test_outputs):
+    
+    def test_update_output_status_transition_invalid(self, client, test_users, test_outputs):
         """Test invalid status transition is rejected"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -733,8 +745,8 @@ class TestUpdateOutput:
 
         assert response.status_code == 422
 
-    @pytest.mark.asyncio
-    async def test_update_output_admin_override(self, client, test_users, test_outputs):
+    
+    def test_update_output_admin_override(self, client, test_users, test_outputs):
         """Test that admin can override status transition rules"""
         token = get_auth_token(client, "admin@test.com", "AdminPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -759,8 +771,8 @@ class TestUpdateOutput:
 class TestDeleteOutput:
     """Test DELETE /api/outputs/{id} endpoint"""
 
-    @pytest.mark.asyncio
-    async def test_delete_output_as_owner(self, client, test_users, test_outputs):
+    
+    def test_delete_output_as_owner(self, client, test_users, test_outputs):
         """Test that owner can delete their own output"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -771,8 +783,8 @@ class TestDeleteOutput:
         assert response.status_code == 200
         assert "deleted successfully" in response.json()["message"]
 
-    @pytest.mark.asyncio
-    async def test_delete_output_as_admin(self, client, test_users, test_outputs):
+    
+    def test_delete_output_as_admin(self, client, test_users, test_outputs):
         """Test that admin can delete any output"""
         token = get_auth_token(client, "admin@test.com", "AdminPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -782,8 +794,8 @@ class TestDeleteOutput:
 
         assert response.status_code == 200
 
-    @pytest.mark.asyncio
-    async def test_delete_output_as_editor(self, client, test_users, test_outputs):
+    
+    def test_delete_output_as_editor(self, client, test_users, test_outputs):
         """Test that editor cannot delete others' outputs"""
         token = get_auth_token(client, "editor@test.com", "EditorPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -793,8 +805,8 @@ class TestDeleteOutput:
 
         assert response.status_code == 403
 
-    @pytest.mark.asyncio
-    async def test_delete_output_as_other_writer(self, client, test_users, test_outputs):
+    
+    def test_delete_output_as_other_writer(self, client, test_users, test_outputs):
         """Test that writer cannot delete another writer's output"""
         token = get_auth_token(client, "writer2@test.com", "Writer2Pass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -804,8 +816,8 @@ class TestDeleteOutput:
 
         assert response.status_code == 403
 
-    @pytest.mark.asyncio
-    async def test_delete_output_not_found(self, client, test_users):
+    
+    def test_delete_output_not_found(self, client, test_users):
         """Test deleting non-existent output returns 404"""
         token = get_auth_token(client, "admin@test.com", "AdminPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -824,8 +836,8 @@ class TestDeleteOutput:
 class TestAnalyticsEndpoints:
     """Test analytics endpoints"""
 
-    @pytest.mark.asyncio
-    async def test_get_analytics_by_style(self, client, test_users, test_outputs, test_writing_style):
+    
+    def test_get_analytics_by_style(self, client, test_users, test_outputs, test_writing_style):
         """Test getting success rate by writing style"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -840,8 +852,8 @@ class TestAnalyticsEndpoints:
         data = response.json()
         assert "total_outputs" in data
 
-    @pytest.mark.asyncio
-    async def test_get_analytics_by_funder(self, client, test_users, test_outputs):
+    
+    def test_get_analytics_by_funder(self, client, test_users, test_outputs):
         """Test getting success rate by funder"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -855,8 +867,8 @@ class TestAnalyticsEndpoints:
         data = response.json()
         assert "funder_name" in data
 
-    @pytest.mark.asyncio
-    async def test_get_analytics_by_year(self, client, test_users, test_outputs):
+    
+    def test_get_analytics_by_year(self, client, test_users, test_outputs):
         """Test getting success rate by year"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -870,8 +882,8 @@ class TestAnalyticsEndpoints:
         data = response.json()
         assert "year" in data
 
-    @pytest.mark.asyncio
-    async def test_get_analytics_summary(self, client, test_users, test_outputs):
+    
+    def test_get_analytics_summary(self, client, test_users, test_outputs):
         """Test getting comprehensive analytics summary"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -885,8 +897,8 @@ class TestAnalyticsEndpoints:
         data = response.json()
         assert "overall_stats" in data
 
-    @pytest.mark.asyncio
-    async def test_get_analytics_funders(self, client, test_users, test_outputs):
+    
+    def test_get_analytics_funders(self, client, test_users, test_outputs):
         """Test getting funder performance metrics"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
@@ -909,8 +921,8 @@ class TestAnalyticsEndpoints:
 class TestErrorHandling:
     """Test error handling scenarios"""
 
-    @pytest.mark.asyncio
-    async def test_invalid_uuid_format(self, client, test_users):
+    
+    def test_invalid_uuid_format(self, client, test_users):
         """Test that invalid UUID format returns 422"""
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
