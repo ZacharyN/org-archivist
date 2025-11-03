@@ -230,7 +230,11 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255))
-    role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.WRITER)
+    role = Column(
+        SQLEnum(UserRole, values_callable=lambda x: [e.value for e in x], native_enum=True),
+        nullable=False,
+        default=UserRole.WRITER
+    )
     is_active = Column(Boolean, default=True, nullable=False)
     is_superuser = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
