@@ -1,14 +1,91 @@
 """
 Pytest configuration and fixtures for integration tests.
+
+Provides shared fixtures for:
+- PostgreSQL test database (mirrors production)
+- FastAPI test client
+- Mock retrieval engine
+- Test users with different roles
 """
+import os
 import pytest
+import pytest_asyncio
+from contextlib import asynccontextmanager
 from fastapi.testclient import TestClient
 from typing import List
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.pool import NullPool
+from uuid import uuid4
+
+# Set DATABASE_URL for auth module BEFORE importing app modules
+# This prevents the auth module from creating an engine with the wrong driver
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://test_user:test_password@localhost:5433/org_archivist_test"
+)
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
 from app.main import app
 from app.services.retrieval_engine import RetrievalResult
 from app.dependencies import get_engine
+from app.db.models import Base, User, UserRole, WritingStyle
+from app.db.session import get_db
+from app.services.auth_service import AuthService
 
+
+# =============================================================================
+# Database Fixtures (PostgreSQL)
+# =============================================================================
+
+@pytest_asyncio.fixture(scope="function")
+async def db_engine():
+    """
+    Create a test database engine connected to PostgreSQL test database.
+
+    Uses NullPool to ensure connections are closed properly after each test.
+    """
+    engine = create_async_engine(
+        TEST_DATABASE_URL,
+        echo=False,
+        poolclass=NullPool
+    )
+
+    yield engine
+
+    # Clean up
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def db_session(db_engine):
+    """
+    Create a test database session with transaction rollback.
+
+    Each test runs in a transaction that is rolled back after the test,
+    ensuring test isolation without needing to recreate tables.
+    """
+    # Create a connection
+    async with db_engine.connect() as connection:
+        # Begin a transaction
+        trans = await connection.begin()
+
+        # Create session bound to this connection
+        async_session = async_sessionmaker(
+            bind=connection,
+            class_=AsyncSession,
+            expire_on_commit=False
+        )
+
+        async with async_session() as session:
+            yield session
+
+        # Rollback transaction (cleanup)
+        await trans.rollback()
+
+
+# =============================================================================
+# Mock Retrieval Engine (for RAG tests)
+# =============================================================================
 
 class MockRetrievalEngine:
     """
@@ -98,19 +175,44 @@ def mock_engine():
     return MockRetrievalEngine()
 
 
+# =============================================================================
+# FastAPI Test Client
+# =============================================================================
+
+# Mock lifespan context manager for tests (prevents DB connection during test init)
+@asynccontextmanager
+async def mock_lifespan(app):
+    """Mock lifespan that does nothing (no DB connection)"""
+    yield
+
+
 @pytest.fixture
-def client(mock_engine):
+def client(mock_engine, db_session):
     """
     Create a test client for the FastAPI application with mocked dependencies.
 
     Args:
         mock_engine: Mock retrieval engine
+        db_session: Test database session
 
     Returns:
         TestClient: FastAPI test client for making HTTP requests
     """
-    # Override the dependency
+    # Import auth module's get_db to override it
+    from app.api.auth import get_db as auth_get_db
+
+    # Override the dependencies
     app.dependency_overrides[get_engine] = lambda: mock_engine
+
+    # Override auth module's get_db with test database session
+    async def override_auth_get_db():
+        yield db_session
+
+    app.dependency_overrides[auth_get_db] = override_auth_get_db
+    app.dependency_overrides[get_db] = override_auth_get_db
+
+    # Mock lifespan to prevent DB connection during test client init
+    app.router.lifespan_context = mock_lifespan
 
     client = TestClient(app)
 
