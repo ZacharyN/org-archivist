@@ -8,12 +8,14 @@ This module provides a conversational interface for multi-turn interactions:
 - DELETE /api/chat/{conversation_id} - Delete a conversation
 """
 
+import json
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from uuid import uuid4, UUID
 from datetime import datetime
 
 from ..models.query import ChatMessage, ChatRequest, ChatResponse, Source
+from ..models.conversation import ConversationContext, SessionMetadata
 from ..models.common import ErrorResponse
 from ..services.database import DatabaseService
 from ..dependencies import get_database
@@ -87,14 +89,36 @@ async def chat(
         # Check if conversation exists
         existing_conversation = await db.get_conversation(conversation_uuid)
 
+        current_time = datetime.utcnow()
+
         if existing_conversation is None:
-            # Create new conversation with empty context
+            # Create new conversation with initialized context
+            # Initialize session metadata for new conversations
+            initial_context = {
+                "session_metadata": {
+                    "started_at": current_time.isoformat(),
+                    "last_active": current_time.isoformat()
+                },
+                "artifacts": []
+            }
+
+            # Merge with any context from request
+            if request.context:
+                context_dict = request.context.model_dump(exclude_none=True)
+                initial_context.update(context_dict)
+                # Ensure session_metadata is preserved
+                if "session_metadata" not in context_dict:
+                    initial_context["session_metadata"] = {
+                        "started_at": current_time.isoformat(),
+                        "last_active": current_time.isoformat()
+                    }
+
             await db.create_conversation(
                 conversation_id=conversation_uuid,
                 name=None,
                 user_id=None,
                 metadata={},
-                context={}
+                context=initial_context
             )
 
         # Add user message to database
@@ -106,6 +130,47 @@ async def chat(
             content=request.message,
             sources=None,
             metadata={}
+        )
+
+        # Update context if provided in request
+        # Get current conversation to access existing context
+        conversation = await db.get_conversation(conversation_uuid)
+        current_context = conversation.get("context", {}) if conversation else {}
+
+        # Handle case where context might be stored as a string (JSON)
+        if isinstance(current_context, str):
+            try:
+                current_context = json.loads(current_context)
+            except json.JSONDecodeError:
+                current_context = {}
+
+        # Build updated context
+        updated_context = current_context.copy() if isinstance(current_context, dict) else {}
+
+        # Update with request context if provided
+        if request.context:
+            context_dict = request.context.model_dump(exclude_none=True)
+            updated_context.update(context_dict)
+
+        # Update last_query and last_active
+        updated_context["last_query"] = request.message
+        if "session_metadata" not in updated_context:
+            updated_context["session_metadata"] = {
+                "started_at": current_time.isoformat(),
+                "last_active": current_time.isoformat()
+            }
+        else:
+            # Preserve started_at, update last_active
+            session_meta = updated_context.get("session_metadata", {})
+            updated_context["session_metadata"] = {
+                "started_at": session_meta.get("started_at", current_time.isoformat()),
+                "last_active": current_time.isoformat()
+            }
+
+        # Save updated context atomically (convert to JSON for database)
+        await db.update_conversation(
+            conversation_id=conversation_uuid,
+            context=json.dumps(updated_context)
         )
 
         # TODO: Implement actual chat logic
@@ -188,6 +253,16 @@ Once fully implemented, I'll be able to:
         # Get updated conversation
         updated_conversation = await db.get_conversation(conversation_uuid)
 
+        # Parse context for response
+        conversation_context = None
+        try:
+            context_data = updated_conversation.get("context", {})
+            if context_data:
+                conversation_context = ConversationContext(**context_data)
+        except Exception:
+            # Handle corrupted/invalid context gracefully
+            conversation_context = None
+
         return ChatResponse(
             message=response_text,
             sources=sources,
@@ -199,7 +274,8 @@ Once fully implemented, I'll be able to:
                 "tokens_used": 0,
                 "context_messages": len(request.conversation_history),
                 "timestamp": datetime.utcnow().isoformat()
-            }
+            },
+            context=conversation_context
         )
 
     except HTTPException:

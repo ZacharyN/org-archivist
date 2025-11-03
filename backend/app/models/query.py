@@ -5,6 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from .document import DocumentFilters
+from .conversation import ConversationContext
 
 
 class QueryRequest(BaseModel):
@@ -186,6 +187,10 @@ class ChatRequest(BaseModel):
         None,
         description="Query parameters if RAG is needed"
     )
+    context: Optional[ConversationContext] = Field(
+        None,
+        description="Conversation context state (writing style, audience, filters, etc.)"
+    )
 
 
 class ChatResponse(BaseModel):
@@ -198,3 +203,7 @@ class ChatResponse(BaseModel):
     message_count: int = Field(..., description="Total messages in conversation")
     requires_rag: bool = Field(..., description="Whether RAG was used for this response")
     metadata: dict = Field(default_factory=dict, description="Response metadata (model, tokens, etc.)")
+    context: Optional[ConversationContext] = Field(
+        None,
+        description="Current conversation context state"
+    )
