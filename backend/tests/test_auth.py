@@ -11,59 +11,18 @@ Tests for Phase 2: Authentication & User Management
 """
 
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
-import asyncio
 from uuid import uuid4
 
 from backend.app.main import app
-from backend.app.db.models import Base, User, UserSession, UserRole
+from backend.app.db.models import User, UserSession, UserRole
 from backend.app.db.session import get_db
 from backend.app.services.auth_service import AuthService
 from backend.app.services.session_service import SessionService
 
-
-# Test database URL (uses in-memory SQLite for testing)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-
-
-@pytest.fixture(scope="function")
-async def db_engine():
-    """Create a test database engine"""
-    engine = create_async_engine(
-        TEST_DATABASE_URL,
-        echo=False,
-        poolclass=NullPool,
-        connect_args={"check_same_thread": False}
-    )
-
-    # Create tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    # Drop tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-
-    await engine.dispose()
-
-
-@pytest.fixture(scope="function")
-async def db_session(db_engine):
-    """Create a test database session"""
-    async_session = sessionmaker(
-        db_engine,
-        class_=AsyncSession,
-        expire_on_commit=False
-    )
-
-    async with async_session() as session:
-        yield session
+# Database fixtures (db_engine, db_session) are now imported from conftest.py
 
 
 @pytest.fixture(scope="function")
@@ -167,7 +126,7 @@ class TestAuthentication:
     async def test_login_success(self, client, test_users):
         """Test successful login with valid credentials"""
         response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -193,7 +152,7 @@ class TestAuthentication:
     async def test_login_invalid_email(self, client, test_users):
         """Test login with non-existent email"""
         response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "nonexistent@test.com",
                 "password": "AnyPassword123!"
@@ -208,7 +167,7 @@ class TestAuthentication:
     async def test_login_invalid_password(self, client, test_users):
         """Test login with incorrect password"""
         response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "WrongPassword123!"
@@ -223,7 +182,7 @@ class TestAuthentication:
     async def test_login_inactive_user(self, client, test_users):
         """Test login with inactive account"""
         response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "inactive@test.com",
                 "password": "InactivePass123!"
@@ -239,7 +198,7 @@ class TestAuthentication:
         """Test getting current user information with valid token"""
         # First login
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -250,7 +209,7 @@ class TestAuthentication:
 
         # Get current user info
         response = client.get(
-            "/api/v1/auth/me",
+            "/api/auth/me",
             headers={"Authorization": f"Bearer {token}"}
         )
 
@@ -264,7 +223,7 @@ class TestAuthentication:
     async def test_get_current_user_info_invalid_token(self, client):
         """Test getting current user info with invalid token"""
         response = client.get(
-            "/api/v1/auth/me",
+            "/api/auth/me",
             headers={"Authorization": "Bearer invalid_token_here"}
         )
 
@@ -273,7 +232,7 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_get_current_user_info_no_token(self, client):
         """Test getting current user info without token"""
-        response = client.get("/api/v1/auth/me")
+        response = client.get("/api/auth/me")
 
         assert response.status_code == 401
 
@@ -282,7 +241,7 @@ class TestAuthentication:
         """Test logout functionality"""
         # First login
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -293,7 +252,7 @@ class TestAuthentication:
 
         # Logout
         logout_response = client.post(
-            "/api/v1/auth/logout",
+            "/api/auth/logout",
             headers={"Authorization": f"Bearer {token}"}
         )
 
@@ -303,7 +262,7 @@ class TestAuthentication:
 
         # Verify token is invalidated - should get 401 on /me endpoint
         me_response = client.get(
-            "/api/v1/auth/me",
+            "/api/auth/me",
             headers={"Authorization": f"Bearer {token}"}
         )
         assert me_response.status_code == 401
@@ -313,7 +272,7 @@ class TestAuthentication:
         """Test token refresh with valid refresh token"""
         # First login
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -324,7 +283,7 @@ class TestAuthentication:
 
         # Refresh token
         refresh_response = client.post(
-            "/api/v1/auth/refresh",
+            "/api/auth/refresh",
             json={"refresh_token": refresh_token}
         )
 
@@ -340,7 +299,7 @@ class TestAuthentication:
     async def test_refresh_token_invalid(self, client):
         """Test token refresh with invalid refresh token"""
         response = client.post(
-            "/api/v1/auth/refresh",
+            "/api/auth/refresh",
             json={"refresh_token": "invalid_refresh_token"}
         )
 
@@ -355,7 +314,7 @@ class TestRoleBasedAccessControl:
         """Test that admin can list all users"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -380,7 +339,7 @@ class TestRoleBasedAccessControl:
         """Test that editor cannot list users (admin only)"""
         # Login as editor
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "editor@test.com",
                 "password": "EditorPass123!"
@@ -401,7 +360,7 @@ class TestRoleBasedAccessControl:
         """Test that writer cannot list users (admin only)"""
         # Login as writer
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "writer@test.com",
                 "password": "WriterPass123!"
@@ -422,7 +381,7 @@ class TestRoleBasedAccessControl:
         """Test that admin can create new users"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -454,7 +413,7 @@ class TestRoleBasedAccessControl:
         """Test that editor cannot create users (admin only)"""
         # Login as editor
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "editor@test.com",
                 "password": "EditorPass123!"
@@ -483,7 +442,7 @@ class TestRoleBasedAccessControl:
         """Test that writer cannot create users (admin only)"""
         # Login as writer
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "writer@test.com",
                 "password": "WriterPass123!"
@@ -512,7 +471,7 @@ class TestRoleBasedAccessControl:
         """Test that users can view their own profile"""
         # Login as writer
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "writer@test.com",
                 "password": "WriterPass123!"
@@ -536,7 +495,7 @@ class TestRoleBasedAccessControl:
         """Test that non-admin users cannot view other users' profiles"""
         # Login as writer
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "writer@test.com",
                 "password": "WriterPass123!"
@@ -559,7 +518,7 @@ class TestRoleBasedAccessControl:
         """Test that admin can view any user's profile"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -584,7 +543,7 @@ class TestRoleBasedAccessControl:
         """Test that admin can update users"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -614,7 +573,7 @@ class TestRoleBasedAccessControl:
         """Test that editor cannot update users (admin only)"""
         # Login as editor
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "editor@test.com",
                 "password": "EditorPass123!"
@@ -638,7 +597,7 @@ class TestRoleBasedAccessControl:
         """Test that admin can deactivate users"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -664,7 +623,7 @@ class TestRoleBasedAccessControl:
         """Test that editor cannot deactivate users (admin only)"""
         # Login as editor
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "editor@test.com",
                 "password": "EditorPass123!"
@@ -687,7 +646,7 @@ class TestRoleBasedAccessControl:
         """Test that admin cannot deactivate their own account"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -709,7 +668,7 @@ class TestRoleBasedAccessControl:
         """Test that superuser can access admin endpoints despite being a writer"""
         # Login as superuser (who is a writer role but has superuser flag)
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "superuser@test.com",
                 "password": "SuperPass123!"
@@ -759,7 +718,7 @@ class TestRoleHierarchy:
         for role, permissions in roles_and_permissions.items():
             # Login as role
             login_response = client.post(
-                "/api/v1/auth/login",
+                "/api/auth/login",
                 json={
                     "email": f"{role}@test.com",
                     "password": f"{role.capitalize()}Pass123!"
@@ -788,7 +747,7 @@ class TestSessionManagement:
         """Test that user can have multiple active sessions"""
         # Login first time
         response1 = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -799,7 +758,7 @@ class TestSessionManagement:
 
         # Login second time
         response2 = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -810,13 +769,13 @@ class TestSessionManagement:
 
         # Both tokens should work
         me1 = client.get(
-            "/api/v1/auth/me",
+            "/api/auth/me",
             headers={"Authorization": f"Bearer {token1}"}
         )
         assert me1.status_code == 200
 
         me2 = client.get(
-            "/api/v1/auth/me",
+            "/api/auth/me",
             headers={"Authorization": f"Bearer {token2}"}
         )
         assert me2.status_code == 200
@@ -826,7 +785,7 @@ class TestSessionManagement:
         """Test that logout invalidates all sessions (current behavior)"""
         # Login first time
         response1 = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -836,7 +795,7 @@ class TestSessionManagement:
 
         # Login second time
         response2 = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -846,20 +805,20 @@ class TestSessionManagement:
 
         # Logout with first token (invalidates all sessions based on current implementation)
         logout_response = client.post(
-            "/api/v1/auth/logout",
+            "/api/auth/logout",
             headers={"Authorization": f"Bearer {token1}"}
         )
         assert logout_response.status_code == 200
 
         # Both tokens should be invalid now
         me1 = client.get(
-            "/api/v1/auth/me",
+            "/api/auth/me",
             headers={"Authorization": f"Bearer {token1}"}
         )
         assert me1.status_code == 401
 
         me2 = client.get(
-            "/api/v1/auth/me",
+            "/api/auth/me",
             headers={"Authorization": f"Bearer {token2}"}
         )
         assert me2.status_code == 401
@@ -872,7 +831,7 @@ class TestEdgeCases:
     async def test_login_malformed_request(self, client):
         """Test login with malformed request"""
         response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={"email": "test@test.com"}  # Missing password
         )
 
@@ -883,7 +842,7 @@ class TestEdgeCases:
         """Test creating user with duplicate email"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -912,7 +871,7 @@ class TestEdgeCases:
         """Test updating non-existent user"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"
@@ -935,7 +894,7 @@ class TestEdgeCases:
         """Test deleting non-existent user"""
         # Login as admin
         login_response = client.post(
-            "/api/v1/auth/login",
+            "/api/auth/login",
             json={
                 "email": "admin@test.com",
                 "password": "AdminPass123!"

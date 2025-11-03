@@ -231,7 +231,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255))
     role = Column(
-        SQLEnum(UserRole, values_callable=lambda x: [e.value for e in x], native_enum=True),
+        SQLEnum(UserRole, values_callable=lambda x: [e.value for e in x], native_enum=False),
         nullable=False,
         default=UserRole.WRITER
     )
