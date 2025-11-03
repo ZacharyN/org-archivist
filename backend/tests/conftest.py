@@ -42,6 +42,7 @@ async def db_engine():
     """
     Create a test database engine connected to PostgreSQL test database.
 
+    Creates all tables at fixture start and drops them at teardown.
     Uses NullPool to ensure connections are closed properly after each test.
     """
     engine = create_async_engine(
@@ -50,37 +51,39 @@ async def db_engine():
         poolclass=NullPool
     )
 
+    # Create all tables before test
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     yield engine
 
-    # Clean up
+    # Clean up - drop all tables and data after test
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
     await engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session(db_engine):
     """
-    Create a test database session with transaction rollback.
+    Create a test database session that commits data directly to database.
 
-    Each test runs in a transaction that is rolled back after the test,
-    ensuring test isolation without needing to recreate tables.
+    Data persists during test execution so that TestClient (which creates
+    separate connections) can see committed test data for authentication.
+    Tables are dropped after each test by db_engine fixture for isolation.
     """
-    # Create a connection
-    async with db_engine.connect() as connection:
-        # Begin a transaction
-        trans = await connection.begin()
+    # Create session factory
+    async_session = async_sessionmaker(
+        bind=db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
 
-        # Create session bound to this connection
-        async_session = async_sessionmaker(
-            bind=connection,
-            class_=AsyncSession,
-            expire_on_commit=False
-        )
-
-        async with async_session() as session:
-            yield session
-
-        # Rollback transaction (cleanup)
-        await trans.rollback()
+    # Create session that commits directly to database
+    async with async_session() as session:
+        yield session
+        # No rollback - data persists and is cleaned up by dropping tables
 
 
 # =============================================================================
