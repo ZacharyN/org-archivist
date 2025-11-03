@@ -2,7 +2,7 @@
 Document-related Pydantic models
 """
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -61,6 +61,33 @@ class DocumentMetadata(BaseModel):
         return v
 
 
+class DocumentSensitivityCheck(BaseModel):
+    """
+    Document sensitivity metadata for Phase 5 security validation
+    """
+    is_sensitive: bool = Field(
+        False,
+        description="Whether the document contains sensitive information"
+    )
+    sensitivity_level: Optional[Literal["low", "medium", "high"]] = Field(
+        None,
+        description="Sensitivity classification level"
+    )
+    sensitivity_notes: Optional[str] = Field(
+        None,
+        description="Additional notes about document sensitivity"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "is_sensitive": False,
+                "sensitivity_level": "low",
+                "sensitivity_notes": "Public-facing annual report"
+            }
+        }
+
+
 class DocumentUploadRequest(BaseModel):
     """
     Request model for document upload
@@ -70,6 +97,24 @@ class DocumentUploadRequest(BaseModel):
         ...,
         description="Document metadata"
     )
+    sensitivity_confirmed: bool = Field(
+        ...,
+        description="Confirmation that document sensitivity has been reviewed and is appropriate for upload"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "metadata": {
+                    "doc_type": "Grant Proposal",
+                    "year": 2024,
+                    "programs": ["Early Childhood"],
+                    "tags": ["federal", "education"],
+                    "outcome": "Funded"
+                },
+                "sensitivity_confirmed": True
+            }
+        }
 
 
 class DocumentUploadResponse(BaseModel):
