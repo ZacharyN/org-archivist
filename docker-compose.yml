@@ -33,6 +33,36 @@ services:
       - org-archivist-network
 
   # =============================================================================
+  # PostgreSQL Test Database
+  # =============================================================================
+  # Dedicated PostgreSQL instance for testing to mirror production environment
+  # Uses port 5433 to avoid conflicts with production database
+  # =============================================================================
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: org-archivist-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-test_user}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-test_password}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-org_archivist_test}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_TEST_PORT:-5433}:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      # Test database schema managed by Alembic migrations
+      # Run migrations before tests: alembic upgrade head
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_TEST_USER:-test_user} -d ${POSTGRES_TEST_DB:-org_archivist_test}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - org-archivist-network
+
+  # =============================================================================
   # Qdrant Vector Database
   # =============================================================================
   qdrant:
@@ -171,6 +201,9 @@ networks:
 volumes:
   postgres_data:
     name: org-archivist-postgres-data
+    driver: local
+  postgres_test_data:
+    name: org-archivist-postgres-test-data
     driver: local
   qdrant_storage:
     name: org-archivist-qdrant-storage

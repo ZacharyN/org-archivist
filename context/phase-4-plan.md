@@ -70,7 +70,7 @@
 
   Option 2: Start Phase 4 Immediately
 
-  1. Start with task 6c9fd835 (Create outputs migration)
+  1. Start with task 6c9fd835 (Create outputs migration)Phase 
   2. Continue in task_order sequence
   3. Auth tasks can run in parallel
 

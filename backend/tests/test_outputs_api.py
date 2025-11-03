@@ -105,12 +105,12 @@ async def test_users(db_session):
 async def test_writing_style(db_session, test_users):
     """Create a test writing style"""
     style = WritingStyle(
-        writing_style_id=uuid4(),
+        style_id=uuid4(),
         name="Test Grant Style",
+        type="grant",
         description="A test writing style for grants",
-        guidelines="Write clearly and concisely",
-        sample_text="This is a sample grant proposal...",
-        created_by=test_users["writer"]["user"].email,
+        prompt_content="Write clearly and concisely. This is a sample grant proposal...",
+        created_by=test_users["writer"]["user"].user_id,
     )
     db_session.add(style)
     await db_session.commit()
@@ -132,7 +132,7 @@ async def test_outputs(db_session, test_users, test_writing_style):
         content="This is a draft grant proposal content...",
         word_count=500,
         status="draft",
-        writing_style_id=test_writing_style.writing_style_id,
+        writing_style_id=test_writing_style.style_id,
         created_by=test_users["writer"]["user"].email,
     )
     db_session.add(output1)
@@ -149,7 +149,7 @@ async def test_outputs(db_session, test_users, test_writing_style):
         funder_name="National Science Foundation",
         requested_amount=500000.00,
         submission_date=date(2024, 1, 15),
-        writing_style_id=test_writing_style.writing_style_id,
+        writing_style_id=test_writing_style.style_id,
         created_by=test_users["writer"]["user"].email,
     )
     db_session.add(output2)
@@ -169,7 +169,7 @@ async def test_outputs(db_session, test_users, test_writing_style):
         submission_date=date(2024, 2, 1),
         decision_date=date(2024, 5, 15),
         success_notes="Successfully funded! Great collaboration mentioned.",
-        writing_style_id=test_writing_style.writing_style_id,
+        writing_style_id=test_writing_style.style_id,
         created_by=test_users["writer"]["user"].email,
     )
     db_session.add(output3)
@@ -178,7 +178,7 @@ async def test_outputs(db_session, test_users, test_writing_style):
     # Writer 2's output
     output4 = Output(
         output_id=uuid4(),
-        output_type="letter_of_inquiry",
+        output_type="other",
         title="LOI - Foundation XYZ",
         content="This is a letter of inquiry...",
         word_count=800,
@@ -280,14 +280,14 @@ class TestCreateOutput:
                 "content": "Content following the style...",
                 "word_count": 800,
                 "status": "draft",
-                "writing_style_id": str(test_writing_style.writing_style_id)
+                "writing_style_id": str(test_writing_style.style_id)
             },
             headers=headers
         )
 
         assert response.status_code == 201
         data = response.json()
-        assert data["writing_style_id"] == str(test_writing_style.writing_style_id)
+        assert data["writing_style_id"] == str(test_writing_style.style_id)
 
     def test_create_output_minimal_data(self, client, test_users):
         """Test creating output with only required fields"""
@@ -795,7 +795,7 @@ class TestAnalyticsEndpoints:
         token = get_auth_token(client, "writer@test.com", "WriterPass123!")
         headers = {"Authorization": f"Bearer {token}"}
 
-        style_id = test_writing_style.writing_style_id
+        style_id = test_writing_style.style_id
         response = client.get(
             f"/api/outputs/analytics/style/{style_id}",
             headers=headers

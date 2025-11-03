@@ -19,11 +19,20 @@ from uuid import uuid4
 
 # Set DATABASE_URL for auth module BEFORE importing app modules
 # This prevents the auth module from creating an engine with the wrong driver
+# Note: Use postgres-test:5432 for Docker test environment (org-archivist-network)
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://test_user:test_password@localhost:5433/org_archivist_test"
+    "postgresql+asyncpg://test_user:test_password@postgres-test:5432/org_archivist_test"
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+
+# Set individual PostgreSQL environment variables for DatabaseService
+# DatabaseService constructs its connection URL from these individual settings
+os.environ["POSTGRES_HOST"] = os.getenv("POSTGRES_HOST", "postgres-test")
+os.environ["POSTGRES_PORT"] = os.getenv("POSTGRES_PORT", "5432")
+os.environ["POSTGRES_USER"] = os.getenv("POSTGRES_USER", "test_user")
+os.environ["POSTGRES_PASSWORD"] = os.getenv("POSTGRES_PASSWORD", "test_password")
+os.environ["POSTGRES_DB"] = os.getenv("POSTGRES_DB", "org_archivist_test")
 
 from app.main import app
 from app.services.retrieval_engine import RetrievalResult
@@ -203,6 +212,8 @@ def client(mock_engine, db_session):
     """
     # Import auth module's get_db to override it
     from app.api.auth import get_db as auth_get_db
+    from app.dependencies import get_database
+    from app.services.database import DatabaseService
 
     # Override the dependencies
     app.dependency_overrides[get_engine] = lambda: mock_engine
@@ -213,6 +224,19 @@ def client(mock_engine, db_session):
 
     app.dependency_overrides[auth_get_db] = override_auth_get_db
     app.dependency_overrides[get_db] = override_auth_get_db
+
+    # Override get_database to return a properly configured DatabaseService
+    # that uses the test database URL
+    async def override_get_database() -> DatabaseService:
+        """Provides DatabaseService connected to test database"""
+        db = DatabaseService()
+        # The DatabaseService will use the TEST_DATABASE_URL from environment
+        # which was set at line 26 above
+        if not db.pool:
+            await db.connect()
+        return db
+
+    app.dependency_overrides[get_database] = override_get_database
 
     # Mock lifespan to prevent DB connection during test client init
     app.router.lifespan_context = mock_lifespan

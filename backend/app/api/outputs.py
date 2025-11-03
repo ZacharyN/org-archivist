@@ -28,9 +28,10 @@ from ..models.output import (
     OutputStatus,
 )
 from ..models.common import ErrorResponse
-from ..services.database import get_database_service
+from ..services.database import DatabaseService
 from ..services.success_tracking import SuccessTrackingService, StatusTransitionError
 from ..api.auth import get_current_user_from_token, get_db
+from ..dependencies import get_database
 from ..db.models import User, UserRole
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +43,7 @@ router = APIRouter(prefix="/api/outputs", tags=["Outputs"])
 async def check_output_permission(
     output_id: UUID,
     user: User,
+    db: DatabaseService,
     action: str = "view"
 ) -> dict:
     """
@@ -50,6 +52,7 @@ async def check_output_permission(
     Args:
         output_id: Output ID to check
         user: Current authenticated user
+        db: Database service instance
         action: Action being performed (view, edit, delete)
 
     Returns:
@@ -58,7 +61,6 @@ async def check_output_permission(
     Raises:
         HTTPException: If output not found or permission denied
     """
-    db = get_database_service()
     output = await db.get_output(output_id)
 
     if not output:
@@ -113,7 +115,8 @@ async def check_output_permission(
 )
 async def create_output(
     request: OutputCreateRequest,
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> OutputResponse:
     """
     Create a new output
@@ -121,6 +124,7 @@ async def create_output(
     Args:
         request: Output creation request
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Created output data
@@ -131,7 +135,6 @@ async def create_output(
     try:
         logger.info(f"Creating output '{request.title}' for user {user.email}")
 
-        db = get_database_service()
         output_id = uuid4()
 
         # Create output in database
@@ -203,7 +206,8 @@ async def list_outputs(
     writing_style_id: Optional[str] = Query(None, description="Filter by writing style ID"),
     funder_name: Optional[str] = Query(None, description="Filter by funder name (partial)"),
     search: Optional[str] = Query(None, description="Search in title, content, etc."),
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> OutputListResponse:
     """
     List outputs with filtering
@@ -217,12 +221,12 @@ async def list_outputs(
         funder_name: Filter by funder
         search: Full-text search
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Paginated list of outputs
     """
     try:
-        db = get_database_service()
 
         # Convert enums to strings
         type_filter = [t.value for t in output_type] if output_type else None
@@ -304,7 +308,8 @@ async def list_outputs(
 )
 async def get_stats(
     output_type: Optional[List[OutputType]] = Query(None, description="Filter by output type(s)"),
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> OutputStatsResponse:
     """
     Get output statistics
@@ -312,12 +317,12 @@ async def get_stats(
     Args:
         output_type: Optional filter by type(s)
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Statistics and analytics
     """
     try:
-        db = get_database_service()
 
         # Convert enums to strings
         type_filter = [t.value for t in output_type] if output_type else None
@@ -360,7 +365,8 @@ async def get_stats(
 )
 async def get_output(
     output_id: UUID,
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> OutputResponse:
     """
     Get a specific output
@@ -368,6 +374,7 @@ async def get_output(
     Args:
         output_id: Output UUID
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Output data
@@ -375,7 +382,7 @@ async def get_output(
     Raises:
         HTTPException: If not found or permission denied
     """
-    output = await check_output_permission(output_id, user, action="view")
+    output = await check_output_permission(output_id, user, db, action="view")
     return OutputResponse(**output)
 
 
@@ -407,7 +414,8 @@ async def get_output(
 async def update_output(
     output_id: UUID,
     request: OutputUpdateRequest,
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> OutputResponse:
     """
     Update an output
@@ -416,6 +424,7 @@ async def update_output(
         output_id: Output UUID
         request: Update request (partial fields)
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Updated output data
@@ -424,12 +433,11 @@ async def update_output(
         HTTPException: If not found, permission denied, or update fails
     """
     # Check permissions
-    output_data = await check_output_permission(output_id, user, action="edit")
+    output_data = await check_output_permission(output_id, user, db, action="edit")
 
     try:
         logger.info(f"Updating output {output_id} by user {user.email}")
 
-        db = get_database_service()
         success_tracking = SuccessTrackingService(db)
 
         # Validate status transition if status is being updated
@@ -549,7 +557,8 @@ async def update_output(
 )
 async def delete_output(
     output_id: UUID,
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> dict:
     """
     Delete an output
@@ -557,6 +566,7 @@ async def delete_output(
     Args:
         output_id: Output UUID
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Success message
@@ -565,12 +575,11 @@ async def delete_output(
         HTTPException: If not found, permission denied, or deletion fails
     """
     # Check permissions (delete has stricter rules)
-    await check_output_permission(output_id, user, action="delete")
+    await check_output_permission(output_id, user, db, action="delete")
 
     try:
         logger.info(f"Deleting output {output_id} by user {user.email}")
 
-        db = get_database_service()
         deleted = await db.delete_output(output_id)
 
         if not deleted:
@@ -623,7 +632,8 @@ async def get_success_rate_by_style(
     style_id: UUID,
     start_date: Optional[datetime] = Query(None, description="Start date filter"),
     end_date: Optional[datetime] = Query(None, description="End date filter"),
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> dict:
     """
     Get success rate for a writing style
@@ -633,12 +643,12 @@ async def get_success_rate_by_style(
         start_date: Optional start date filter
         end_date: Optional end date filter
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Success rate metrics for the style
     """
     try:
-        db = get_database_service()
         success_tracking = SuccessTrackingService(db)
 
         metrics = await success_tracking.calculate_success_rate_by_style(
@@ -682,7 +692,8 @@ async def get_success_rate_by_funder(
     funder_name: str,
     start_date: Optional[datetime] = Query(None, description="Start date filter"),
     end_date: Optional[datetime] = Query(None, description="End date filter"),
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> dict:
     """
     Get success rate for a funder
@@ -692,12 +703,12 @@ async def get_success_rate_by_funder(
         start_date: Optional start date filter
         end_date: Optional end date filter
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Success rate metrics for the funder
     """
     try:
-        db = get_database_service()
         success_tracking = SuccessTrackingService(db)
 
         metrics = await success_tracking.calculate_success_rate_by_funder(
@@ -739,7 +750,8 @@ async def get_success_rate_by_funder(
 )
 async def get_success_rate_by_year(
     year: int,
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> dict:
     """
     Get success rate for a specific year
@@ -747,12 +759,12 @@ async def get_success_rate_by_year(
     Args:
         year: Year to analyze
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Success rate metrics for the year
     """
     try:
-        db = get_database_service()
         success_tracking = SuccessTrackingService(db)
 
         metrics = await success_tracking.calculate_success_rate_by_year(year=year)
@@ -790,19 +802,20 @@ async def get_success_rate_by_year(
     """,
 )
 async def get_success_metrics_summary(
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> dict:
     """
     Get comprehensive success metrics summary
 
     Args:
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         Comprehensive metrics summary
     """
     try:
-        db = get_database_service()
         success_tracking = SuccessTrackingService(db)
 
         # Writers can only see their own metrics
@@ -848,7 +861,8 @@ async def get_success_metrics_summary(
 )
 async def get_funder_performance(
     limit: int = Query(10, ge=1, le=50, description="Maximum number of funders"),
-    user: User = Depends(get_current_user_from_token)
+    user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
 ) -> List[dict]:
     """
     Get performance metrics for funders
@@ -856,12 +870,12 @@ async def get_funder_performance(
     Args:
         limit: Maximum number of funders to return
         user: Current authenticated user
+        db: Database service instance
 
     Returns:
         List of funder performance metrics
     """
     try:
-        db = get_database_service()
         success_tracking = SuccessTrackingService(db)
 
         # Writers can only see their own funder performance
