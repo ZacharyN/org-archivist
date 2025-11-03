@@ -3,21 +3,22 @@ Chat API endpoint
 
 This module provides a conversational interface for multi-turn interactions:
 - POST /api/chat - Send a message and receive a response with context
+- GET /api/chat/{conversation_id} - Get conversation history
+- GET /api/chat - List all conversations
+- DELETE /api/chat/{conversation_id} - Delete a conversation
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status
-from uuid import uuid4
+from fastapi import APIRouter, HTTPException, status, Depends
+from uuid import uuid4, UUID
 from datetime import datetime
 
 from ..models.query import ChatMessage, ChatRequest, ChatResponse, Source
 from ..models.common import ErrorResponse
+from ..services.database import DatabaseService
+from ..dependencies import get_database
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
-
-
-# In-memory conversation storage (TODO: Replace with database)
-conversations_store = {}
 
 
 @router.post(
@@ -54,12 +55,16 @@ conversations_store = {}
     - "What's another example?"
     """,
 )
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(
+    request: ChatRequest,
+    db: DatabaseService = Depends(get_database)
+) -> ChatResponse:
     """
     Send a chat message and receive a context-aware response.
 
     Args:
         request: Chat request with message and conversation history
+        db: Database service for conversation persistence
 
     Returns:
         ChatResponse with assistant message, sources, and conversation metadata
@@ -77,24 +82,31 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
         # Get or create conversation
         conversation_id = request.conversation_id or str(uuid4())
+        conversation_uuid = UUID(conversation_id)
 
-        if conversation_id not in conversations_store:
-            conversations_store[conversation_id] = {
-                "id": conversation_id,
-                "messages": [],
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat(),
-            }
+        # Check if conversation exists
+        existing_conversation = await db.get_conversation(conversation_uuid)
 
-        conversation = conversations_store[conversation_id]
+        if existing_conversation is None:
+            # Create new conversation with empty context
+            await db.create_conversation(
+                conversation_id=conversation_uuid,
+                name=None,
+                user_id=None,
+                metadata={},
+                context={}
+            )
 
-        # Add user message to history
-        user_message = ChatMessage(
+        # Add user message to database
+        user_message_id = uuid4()
+        await db.add_message(
+            message_id=user_message_id,
+            conversation_id=conversation_uuid,
             role="user",
             content=request.message,
-            timestamp=datetime.utcnow().isoformat()
+            sources=None,
+            metadata={}
         )
-        conversation["messages"].append(user_message.dict())
 
         # TODO: Implement actual chat logic
         # 1. Analyze message intent
@@ -126,13 +138,18 @@ async def chat(request: ChatRequest) -> ChatResponse:
         #     system_prompt=system_prompt
         # )
 
+        # Get conversation with messages for context
+        conversation = await db.get_conversation(conversation_uuid)
+        message_count = len(conversation["messages"]) if conversation else 0
+
         # Stub response
         response_text = f"""Thank you for your message. This is a stub chat response.
 
 Your message: "{request.message}"
 
 This endpoint will provide context-aware responses based on:
-- Your conversation history ({len(request.conversation_history)} previous messages)
+- Your conversation history ({len(request.conversation_history)} previous messages in request)
+- Current conversation has {message_count} total messages in database
 - Retrieved document context when needed
 - Multi-turn dialogue capabilities
 
@@ -142,15 +159,6 @@ Once fully implemented, I'll be able to:
 - Provide citations to organizational documents
 - Help you draft grant proposals collaboratively
 """
-
-        # Create assistant message
-        assistant_message = ChatMessage(
-            role="assistant",
-            content=response_text,
-            timestamp=datetime.utcnow().isoformat()
-        )
-        conversation["messages"].append(assistant_message.dict())
-        conversation["updated_at"] = datetime.utcnow().isoformat()
 
         # Stub sources (if RAG was used)
         sources = []
@@ -166,11 +174,25 @@ Once fully implemented, I'll be able to:
                 )
             ]
 
+        # Add assistant message to database
+        assistant_message_id = uuid4()
+        await db.add_message(
+            message_id=assistant_message_id,
+            conversation_id=conversation_uuid,
+            role="assistant",
+            content=response_text,
+            sources=[s.dict() for s in sources] if sources else None,
+            metadata={}
+        )
+
+        # Get updated conversation
+        updated_conversation = await db.get_conversation(conversation_uuid)
+
         return ChatResponse(
             message=response_text,
             sources=sources,
             conversation_id=conversation_id,
-            message_count=len(conversation["messages"]),
+            message_count=len(updated_conversation["messages"]),
             requires_rag=len(sources) > 0,
             metadata={
                 "model": "claude-sonnet-4.5",
@@ -182,6 +204,12 @@ Once fully implemented, I'll be able to:
 
     except HTTPException:
         raise
+    except ValueError as e:
+        # Handle UUID parsing errors
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid conversation ID format: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -194,12 +222,16 @@ Once fully implemented, I'll be able to:
     summary="Get conversation history",
     description="Retrieve the full message history for a conversation",
 )
-async def get_conversation(conversation_id: str) -> dict:
+async def get_conversation(
+    conversation_id: str,
+    db: DatabaseService = Depends(get_database)
+) -> dict:
     """
     Get conversation history by ID.
 
     Args:
         conversation_id: UUID of the conversation
+        db: Database service
 
     Returns:
         Conversation object with all messages
@@ -207,13 +239,30 @@ async def get_conversation(conversation_id: str) -> dict:
     Raises:
         HTTPException: If conversation not found
     """
-    if conversation_id not in conversations_store:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Conversation {conversation_id} not found"
-        )
+    try:
+        conversation_uuid = UUID(conversation_id)
+        conversation = await db.get_conversation(conversation_uuid)
 
-    return conversations_store[conversation_id]
+        if conversation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Conversation {conversation_id} not found"
+            )
+
+        return conversation
+
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid conversation ID format"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get conversation: {str(e)}"
+        )
 
 
 @router.delete(
@@ -221,12 +270,16 @@ async def get_conversation(conversation_id: str) -> dict:
     summary="Delete conversation",
     description="Delete a conversation and all its messages",
 )
-async def delete_conversation(conversation_id: str) -> dict:
+async def delete_conversation(
+    conversation_id: str,
+    db: DatabaseService = Depends(get_database)
+) -> dict:
     """
     Delete a conversation.
 
     Args:
         conversation_id: UUID of the conversation
+        db: Database service
 
     Returns:
         Success message
@@ -234,19 +287,34 @@ async def delete_conversation(conversation_id: str) -> dict:
     Raises:
         HTTPException: If conversation not found
     """
-    if conversation_id not in conversations_store:
+    try:
+        conversation_uuid = UUID(conversation_id)
+        deleted = await db.delete_conversation(conversation_uuid)
+
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Conversation {conversation_id} not found"
+            )
+
+        return {
+            "success": True,
+            "message": f"Conversation {conversation_id} deleted",
+            "conversation_id": conversation_id
+        }
+
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Conversation {conversation_id} not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid conversation ID format"
         )
-
-    del conversations_store[conversation_id]
-
-    return {
-        "success": True,
-        "message": f"Conversation {conversation_id} deleted",
-        "conversation_id": conversation_id
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete conversation: {str(e)}"
+        )
 
 
 @router.get(
@@ -254,25 +322,54 @@ async def delete_conversation(conversation_id: str) -> dict:
     summary="List all conversations",
     description="Get a list of all conversation IDs and metadata",
 )
-async def list_conversations() -> dict:
+async def list_conversations(
+    user_id: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    db: DatabaseService = Depends(get_database)
+) -> dict:
     """
     List all conversations.
+
+    Args:
+        user_id: Optional filter by user ID
+        skip: Number of conversations to skip (for pagination)
+        limit: Maximum number of conversations to return
+        db: Database service
 
     Returns:
         List of conversation metadata (without full message history)
     """
-    conversations_list = [
-        {
-            "id": conv["id"],
-            "message_count": len(conv["messages"]),
-            "created_at": conv["created_at"],
-            "updated_at": conv["updated_at"],
-            "preview": conv["messages"][0]["content"][:100] if conv["messages"] else ""
-        }
-        for conv in conversations_store.values()
-    ]
+    try:
+        conversations = await db.list_conversations(
+            user_id=user_id,
+            skip=skip,
+            limit=limit
+        )
 
-    return {
-        "conversations": conversations_list,
-        "total_count": len(conversations_list)
-    }
+        # Add preview from first message if messages exist
+        for conv in conversations:
+            # Fetch just the first message for preview
+            try:
+                conv_uuid = UUID(conv["conversation_id"])
+                full_conv = await db.get_conversation(conv_uuid)
+                if full_conv and full_conv.get("messages"):
+                    first_msg = full_conv["messages"][0]
+                    conv["preview"] = first_msg["content"][:100] if first_msg["content"] else ""
+                else:
+                    conv["preview"] = ""
+            except Exception:
+                conv["preview"] = ""
+
+        return {
+            "conversations": conversations,
+            "total_count": len(conversations),
+            "skip": skip,
+            "limit": limit
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list conversations: {str(e)}"
+        )

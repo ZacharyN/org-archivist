@@ -168,9 +168,19 @@ class ChatRequest(BaseModel):
     Request model for chat endpoint
     """
     message: str = Field(..., min_length=1, description="User message")
+    conversation_id: Optional[str] = Field(
+        None,
+        description="Conversation ID (UUID) - if None, creates new conversation"
+    )
     conversation_history: List[ChatMessage] = Field(
         default_factory=list,
         description="Previous conversation messages"
+    )
+    context_window: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Number of previous messages to include in context"
     )
     parameters: Optional[QueryRequest] = Field(
         None,
@@ -182,6 +192,9 @@ class ChatResponse(BaseModel):
     """
     Response model for chat endpoint
     """
-    message: ChatMessage = Field(..., description="Assistant's response message")
-    needs_rag: bool = Field(..., description="Whether RAG was used")
-    confidence: Optional[float] = Field(None, description="Response confidence if RAG used")
+    message: str = Field(..., description="Assistant's response message text")
+    sources: List[Source] = Field(default_factory=list, description="Source documents used (if RAG)")
+    conversation_id: str = Field(..., description="Conversation ID (UUID)")
+    message_count: int = Field(..., description="Total messages in conversation")
+    requires_rag: bool = Field(..., description="Whether RAG was used for this response")
+    metadata: dict = Field(default_factory=dict, description="Response metadata (model, tokens, etc.)")

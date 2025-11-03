@@ -6,6 +6,7 @@ including document metadata storage and retrieval.
 """
 
 import logging
+import json
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -1442,6 +1443,405 @@ class DatabaseService:
 
         except Exception as e:
             logger.error(f"Failed to search outputs: {e}")
+            raise
+    # ==========================================
+    # Conversation Management Methods
+    # ==========================================
+
+    async def create_conversation(
+        self,
+        conversation_id: UUID,
+        name: Optional[str] = None,
+        user_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a new conversation
+
+        Args:
+            conversation_id: Unique conversation identifier
+            name: Optional conversation name
+            user_id: Optional user identifier
+            metadata: Optional conversation metadata
+            context: Optional conversation context (writing_style, audience, etc.)
+
+        Returns:
+            Dictionary with created conversation data
+
+        Raises:
+            Exception: If creation fails
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            INSERT INTO conversations (
+                conversation_id, name, user_id, metadata, context, created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7
+            )
+            RETURNING conversation_id, name, user_id, metadata, context, created_at, updated_at
+        """
+
+        try:
+            now = datetime.utcnow()
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    conversation_id,
+                    name,
+                    user_id,
+                    json.dumps(metadata or {}),
+                    json.dumps(context or {}),
+                    now,
+                    now
+                )
+
+                logger.info(f"Created conversation: {conversation_id}")
+
+                return {
+                    "conversation_id": str(row["conversation_id"]),
+                    "name": row["name"],
+                    "user_id": row["user_id"],
+                    "metadata": row["metadata"],
+                    "context": row["context"],
+                    "created_at": row["created_at"].isoformat(),
+                    "updated_at": row["updated_at"].isoformat(),
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to create conversation {conversation_id}: {e}")
+            raise
+
+    async def get_conversation(
+        self,
+        conversation_id: UUID
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get conversation by ID with all messages
+
+        Args:
+            conversation_id: Conversation identifier
+
+        Returns:
+            Conversation data with messages, or None if not found
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            SELECT
+                conversation_id, name, user_id, metadata, context,
+                created_at, updated_at
+            FROM conversations
+            WHERE conversation_id = $1
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, conversation_id)
+
+                if not row:
+                    return None
+
+                # Get messages for this conversation
+                messages = await self._get_conversation_messages(conn, conversation_id)
+
+                return {
+                    "conversation_id": str(row["conversation_id"]),
+                    "name": row["name"],
+                    "user_id": row["user_id"],
+                    "metadata": row["metadata"],
+                    "context": row["context"],
+                    "created_at": row["created_at"].isoformat(),
+                    "updated_at": row["updated_at"].isoformat(),
+                    "messages": messages,
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to get conversation {conversation_id}: {e}")
+            raise
+
+    async def _get_conversation_messages(
+        self,
+        conn: asyncpg.Connection,
+        conversation_id: UUID
+    ) -> List[Dict[str, Any]]:
+        """Get all messages for a conversation"""
+        rows = await conn.fetch(
+            """
+            SELECT
+                message_id, role, content, sources, metadata, created_at
+            FROM messages
+            WHERE conversation_id = $1
+            ORDER BY created_at ASC
+            """,
+            conversation_id
+        )
+
+        return [
+            {
+                "message_id": str(row["message_id"]),
+                "role": row["role"],
+                "content": row["content"],
+                "sources": row["sources"],
+                "metadata": row["metadata"],
+                "created_at": row["created_at"].isoformat(),
+            }
+            for row in rows
+        ]
+
+    async def list_conversations(
+        self,
+        user_id: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        List conversations with pagination
+
+        Args:
+            user_id: Optional filter by user ID
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+
+        Returns:
+            List of conversation metadata (without full messages)
+        """
+        if not self.pool:
+            await self.connect()
+
+        where_clause = ""
+        params = []
+
+        if user_id:
+            where_clause = "WHERE user_id = $1"
+            params.append(user_id)
+            skip_idx = 2
+        else:
+            skip_idx = 1
+
+        query = f"""
+            SELECT
+                c.conversation_id, c.name, c.user_id, c.metadata, c.context,
+                c.created_at, c.updated_at,
+                COUNT(m.message_id) as message_count
+            FROM conversations c
+            LEFT JOIN messages m ON c.conversation_id = m.conversation_id
+            {where_clause}
+            GROUP BY c.conversation_id, c.name, c.user_id, c.metadata, c.context, c.created_at, c.updated_at
+            ORDER BY c.updated_at DESC
+            OFFSET ${skip_idx} LIMIT ${skip_idx + 1}
+        """
+
+        params.extend([skip, limit])
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, *params)
+
+                conversations = []
+                for row in rows:
+                    conversations.append({
+                        "conversation_id": str(row["conversation_id"]),
+                        "name": row["name"],
+                        "user_id": row["user_id"],
+                        "metadata": row["metadata"],
+                        "context": row["context"],
+                        "created_at": row["created_at"].isoformat(),
+                        "updated_at": row["updated_at"].isoformat(),
+                        "message_count": row["message_count"],
+                    })
+
+                return conversations
+
+        except Exception as e:
+            logger.error(f"Failed to list conversations: {e}")
+            raise
+
+    async def update_conversation(
+        self,
+        conversation_id: UUID,
+        name: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Update conversation fields
+
+        Args:
+            conversation_id: Conversation identifier
+            name: Optional new name
+            context: Optional new context
+            metadata: Optional new metadata
+
+        Returns:
+            True if updated, False if not found
+        """
+        if not self.pool:
+            await self.connect()
+
+        # Build SET clause dynamically based on provided fields
+        set_clauses = []
+        params = [conversation_id]
+        param_idx = 2
+
+        if name is not None:
+            set_clauses.append(f"name = ${param_idx}")
+            params.append(name)
+            param_idx += 1
+
+        if context is not None:
+            set_clauses.append(f"context = ${param_idx}")
+            params.append(context)
+            param_idx += 1
+
+        if metadata is not None:
+            set_clauses.append(f"metadata = ${param_idx}")
+            params.append(metadata)
+            param_idx += 1
+
+        if not set_clauses:
+            # Nothing to update
+            return True
+
+        # Always update updated_at
+        set_clauses.append(f"updated_at = ${param_idx}")
+        params.append(datetime.utcnow())
+
+        query = f"""
+            UPDATE conversations
+            SET {', '.join(set_clauses)}
+            WHERE conversation_id = $1
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.execute(query, *params)
+                updated = result.split()[-1] == "1"
+
+                if updated:
+                    logger.info(f"Updated conversation: {conversation_id}")
+                else:
+                    logger.warning(f"Conversation not found for update: {conversation_id}")
+
+                return updated
+
+        except Exception as e:
+            logger.error(f"Failed to update conversation {conversation_id}: {e}")
+            raise
+
+    async def delete_conversation(
+        self,
+        conversation_id: UUID
+    ) -> bool:
+        """
+        Delete conversation and all associated messages
+
+        Args:
+            conversation_id: Conversation identifier
+
+        Returns:
+            True if deleted, False if not found
+
+        Note:
+            Associated messages are deleted automatically via CASCADE constraint
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = "DELETE FROM conversations WHERE conversation_id = $1"
+
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.execute(query, conversation_id)
+                deleted = result.split()[-1] == "1"
+
+                if deleted:
+                    logger.info(f"Deleted conversation: {conversation_id}")
+                else:
+                    logger.warning(f"Conversation not found for deletion: {conversation_id}")
+
+                return deleted
+
+        except Exception as e:
+            logger.error(f"Failed to delete conversation {conversation_id}: {e}")
+            raise
+
+    async def add_message(
+        self,
+        message_id: UUID,
+        conversation_id: UUID,
+        role: str,
+        content: str,
+        sources: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Add a message to a conversation
+
+        Args:
+            message_id: Unique message identifier
+            conversation_id: Conversation this message belongs to
+            role: Message role ('user' or 'assistant')
+            content: Message content
+            sources: Optional list of sources (for RAG responses)
+            metadata: Optional message metadata
+
+        Returns:
+            Dictionary with created message data
+
+        Raises:
+            Exception: If creation fails
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            INSERT INTO messages (
+                message_id, conversation_id, role, content, sources, metadata, created_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7
+            )
+            RETURNING message_id, conversation_id, role, content, sources, metadata, created_at
+        """
+
+        try:
+            now = datetime.utcnow()
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    message_id,
+                    conversation_id,
+                    role,
+                    content,
+                    json.dumps(sources or []),
+                    json.dumps(metadata or {}),
+                    now
+                )
+
+                # Update conversation's updated_at timestamp
+                await conn.execute(
+                    "UPDATE conversations SET updated_at = $1 WHERE conversation_id = $2",
+                    now,
+                    conversation_id
+                )
+
+                logger.info(f"Added message {message_id} to conversation {conversation_id}")
+
+                return {
+                    "message_id": str(row["message_id"]),
+                    "conversation_id": str(row["conversation_id"]),
+                    "role": row["role"],
+                    "content": row["content"],
+                    "sources": row["sources"],
+                    "metadata": row["metadata"],
+                    "created_at": row["created_at"].isoformat(),
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to add message to conversation {conversation_id}: {e}")
             raise
 
 
