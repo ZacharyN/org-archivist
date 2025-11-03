@@ -21,6 +21,7 @@ from sqlalchemy import (
     Text,
     UUID,
     Enum as SQLEnum,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
@@ -54,6 +55,13 @@ class Document(Base):
     created_by = Column(String(100))
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Sensitivity fields (Phase 5: Context & Sensitivity)
+    is_sensitive = Column(Boolean, nullable=False, default=False)
+    sensitivity_level = Column(String(20), nullable=True)
+    sensitivity_notes = Column(Text, nullable=True)
+    sensitivity_confirmed_at = Column(DateTime, nullable=True)
+    sensitivity_confirmed_by = Column(String(100), nullable=True)
+
     # Relationships
     programs = relationship("DocumentProgram", back_populates="document", cascade="all, delete-orphan")
     tags = relationship("DocumentTag", back_populates="document", cascade="all, delete-orphan")
@@ -72,10 +80,15 @@ class Document(Base):
             "outcome IN ('N/A', 'Funded', 'Not Funded', 'Pending', 'Final Report')",
             name="valid_outcome"
         ),
+        CheckConstraint(
+            "sensitivity_level IN ('low', 'medium', 'high') OR sensitivity_level IS NULL",
+            name="valid_sensitivity_level"
+        ),
         Index("idx_documents_filename", "filename"),
         Index("idx_documents_doc_type", "doc_type"),
         Index("idx_documents_year", "year"),
         Index("idx_documents_upload_date", "upload_date"),
+        Index("idx_documents_sensitivity", "is_sensitive", "sensitivity_level"),
     )
 
 
@@ -154,12 +167,16 @@ class Conversation(Base):
     user_id = Column(String(100))
     conversation_metadata = Column("metadata", JSONB)  # Renamed in model, maps to 'metadata' column
 
+    # Context persistence (Phase 5: Context & Sensitivity)
+    context = Column(JSONB, nullable=False, default={})
+
     # Relationships
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_conversations_user_id", "user_id"),
         Index("idx_conversations_updated_at", "updated_at"),
+        Index("idx_conversations_context_writing_style", text("(context->>'writing_style_id')")),
     )
 
 
