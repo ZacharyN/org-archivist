@@ -64,6 +64,7 @@ logger = logging.getLogger(__name__)
 async def upload_document(
     file: UploadFile = File(..., description="Document file (PDF, DOCX, TXT)"),
     metadata: str = Form(..., description="Document metadata as JSON string"),
+    sensitivity_confirmed: bool = Form(..., description="Confirmation that document sensitivity has been reviewed"),
     processor: DocumentProcessor = Depends(get_processor),
     db: DatabaseService = Depends(get_database),
 ) -> DocumentUploadResponse:
@@ -73,6 +74,7 @@ async def upload_document(
     Args:
         file: Uploaded file
         metadata: JSON string with DocumentMetadata
+        sensitivity_confirmed: Confirmation that document is appropriate for upload
         processor: Document processor service (injected)
         db: Database service (injected)
 
@@ -86,6 +88,17 @@ async def upload_document(
     logger.info(f"Starting document upload: {file.filename}")
 
     try:
+        # Validate sensitivity confirmation (Phase 5: Security validation)
+        if not sensitivity_confirmed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "Sensitivity confirmation required",
+                    "message": "Only upload public-facing documents. Do not upload confidential, financial, or sensitive operational documents.",
+                    "action": "Please confirm that this document is appropriate for upload."
+                }
+            )
+
         # Parse metadata
         try:
             metadata_dict = json.loads(metadata)
@@ -172,6 +185,11 @@ async def upload_document(
                 programs=doc_metadata.programs,
                 tags=doc_metadata.tags,
                 created_by=None,  # TODO: Add user authentication
+                # Phase 5: Document sensitivity fields
+                is_sensitive=False,  # Default to false for confirmed public documents
+                sensitivity_level="low",  # Default to low for public documents
+                sensitivity_confirmed_at=datetime.utcnow(),
+                sensitivity_confirmed_by=None,  # TODO: Add user ID when auth is implemented
             )
             logger.info(f"Document metadata saved to database: {doc_id}")
         except Exception as db_error:

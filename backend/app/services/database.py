@@ -78,6 +78,11 @@ class DatabaseService:
         programs: Optional[List[str]] = None,
         tags: Optional[List[str]] = None,
         created_by: Optional[str] = None,
+        # Phase 5: Document sensitivity fields
+        is_sensitive: bool = False,
+        sensitivity_level: Optional[str] = None,
+        sensitivity_confirmed_at: Optional[datetime] = None,
+        sensitivity_confirmed_by: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Insert a new document record
@@ -94,6 +99,10 @@ class DatabaseService:
             programs: List of programs
             tags: List of tags
             created_by: User who uploaded the document
+            is_sensitive: Whether document contains sensitive information (Phase 5)
+            sensitivity_level: Sensitivity classification level (Phase 5)
+            sensitivity_confirmed_at: When sensitivity was confirmed (Phase 5)
+            sensitivity_confirmed_by: User who confirmed sensitivity (Phase 5)
 
         Returns:
             Dictionary with inserted document data
@@ -107,9 +116,10 @@ class DatabaseService:
         query = """
             INSERT INTO documents (
                 doc_id, filename, doc_type, year, outcome, notes,
-                file_size, chunks_count, created_by, upload_date, updated_at
+                file_size, chunks_count, created_by, upload_date, updated_at,
+                is_sensitive, sensitivity_level, sensitivity_confirmed_at, sensitivity_confirmed_by
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
             )
             RETURNING doc_id, filename, doc_type, year, outcome, upload_date, chunks_count
         """
@@ -120,7 +130,8 @@ class DatabaseService:
                 row = await conn.fetchrow(
                     query,
                     doc_id, filename, doc_type, year, outcome, notes,
-                    file_size, chunks_count, created_by, now, now
+                    file_size, chunks_count, created_by, now, now,
+                    is_sensitive, sensitivity_level, sensitivity_confirmed_at, sensitivity_confirmed_by
                 )
 
                 # Insert programs into junction table if provided
