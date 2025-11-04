@@ -9,10 +9,16 @@ import streamlit as st
 from typing import Optional
 import sys
 from pathlib import Path
+import logging
 
-# Add backend to path for API client access
-backend_path = Path(__file__).parent.parent / "backend"
-sys.path.insert(0, str(backend_path))
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+from utils.api_client import get_api_client, APIError, AuthenticationError
+from config.settings import settings
+
+logger = logging.getLogger(__name__)
+
 
 # Page configuration
 st.set_page_config(
@@ -63,9 +69,6 @@ def init_session_state():
     if 'user_role' not in st.session_state:
         st.session_state.user_role = None
 
-    if 'api_token' not in st.session_state:
-        st.session_state.api_token = None
-
 
 def show_login_page():
     """Display the login page."""
@@ -87,25 +90,33 @@ def show_login_page():
 
             if submitted:
                 if email and password:
-                    # TODO: Implement actual authentication via backend API
-                    # For now, show a placeholder message
-                    with st.spinner("Authenticating..."):
-                        # Placeholder authentication logic
-                        # This will be replaced with actual API call to backend
-                        st.warning("⚠️ Authentication system not yet implemented. Backend integration pending.")
+                    try:
+                        client = get_api_client()
+                        with st.spinner("Authenticating..."):
+                            response = client.login(email, password)
 
-                        # TODO: Replace with actual API call:
-                        # response = requests.post(
-                        #     f"{API_BASE_URL}/api/auth/login",
-                        #     json={"email": email, "password": password}
-                        # )
-                        # if response.status_code == 200:
-                        #     data = response.json()
-                        #     st.session_state.authenticated = True
-                        #     st.session_state.user = data['user']
-                        #     st.session_state.user_role = data['user']['role']
-                        #     st.session_state.api_token = data['token']
-                        #     st.rerun()
+                        # Successful login
+                        if response.get("success") and response.get("user"):
+                            user = response.get("user")
+                            st.session_state.authenticated = True
+                            st.session_state.user = user
+                            st.session_state.user_role = user.get('role', 'user')
+
+                            logger.info(f"User {email} logged in successfully")
+                            st.success(f"Welcome back, {user.get('name', user.get('email'))}!")
+                            st.rerun()
+                        else:
+                            st.error("Invalid credentials. Please try again.")
+
+                    except AuthenticationError as e:
+                        st.error(f"Authentication failed: {e.message}")
+                        logger.error(f"Authentication error for {email}: {e}")
+                    except APIError as e:
+                        st.error(f"Login error: {e.message}")
+                        logger.error(f"API error during login for {email}: {e}")
+                    except Exception as e:
+                        st.error(f"An unexpected error occurred: {str(e)}")
+                        logger.error(f"Unexpected error during login for {email}: {e}", exc_info=True)
                 else:
                     st.error("Please enter both email and password.")
 
@@ -119,22 +130,42 @@ def show_login_page():
 
 def show_main_app():
     """Display the main application after authentication."""
+    # Sidebar
     st.sidebar.title("📝 Org Archivist")
-    st.sidebar.markdown(f"**{st.session_state.user.get('name', 'User')}**")
-    st.sidebar.markdown(f"*{st.session_state.user_role.title()}*")
-    st.sidebar.markdown("---")
 
-    # Navigation
-    st.sidebar.page_link("app.py", label="🏠 Home", icon="🏠")
-    st.sidebar.page_link("pages/1_📚_Document_Library.py", label="Document Library", icon="📚")
-    st.sidebar.page_link("pages/2_✍️_Writing_Styles.py", label="Writing Styles", icon="✍️")
-    st.sidebar.page_link("pages/3_💬_AI_Assistant.py", label="AI Writing Assistant", icon="💬")
-    st.sidebar.page_link("pages/4_📊_Past_Outputs.py", label="Past Outputs", icon="📊")
-    st.sidebar.page_link("pages/5_⚙️_Settings.py", label="Settings", icon="⚙️")
+    if st.session_state.user:
+        user_name = st.session_state.user.get('name') or st.session_state.user.get('email', 'User')
+        st.sidebar.markdown(f"**{user_name}**")
+        st.sidebar.markdown(f"*{st.session_state.user_role.title()}*")
 
     st.sidebar.markdown("---")
 
+    # Navigation - updated to match actual pages
+    st.sidebar.page_link("app.py", label="Home", icon="🏠")
+    st.sidebar.page_link("pages/3_💬_AI_Assistant.py", label="AI Assistant", icon="💬")
+    st.sidebar.page_link("pages/4_⚙️_User_Preferences.py", label="User Preferences", icon="⚙️")
+    st.sidebar.page_link("pages/5_📝_Prompt_Templates.py", label="Prompt Templates", icon="📝")
+    st.sidebar.page_link("pages/6_⚙️_System_Settings.py", label="System Settings", icon="⚙️")
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Quick Actions")
+
+    if st.sidebar.button("💬 Start Chat", use_container_width=True, type="primary"):
+        st.switch_page("pages/3_💬_AI_Assistant.py")
+
+    if st.sidebar.button("📝 Manage Templates", use_container_width=True):
+        st.switch_page("pages/5_📝_Prompt_Templates.py")
+
+    st.sidebar.markdown("---")
+
+    # Logout button
     if st.sidebar.button("🚪 Sign Out", use_container_width=True):
+        try:
+            client = get_api_client()
+            client.logout()
+        except Exception as e:
+            logger.error(f"Error during logout: {e}")
+
         # Clear session state
         for key in list(st.session_state.keys()):
             del st.session_state[key]
@@ -153,7 +184,9 @@ def show_main_app():
 
     st.markdown("---")
 
-    # Quick stats dashboard
+    # Quick stats dashboard (placeholder - will be populated from backend later)
+    st.markdown("### Dashboard")
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -179,32 +212,63 @@ def show_main_app():
 
     with col4:
         st.metric(
-            label="✅ Success Rate",
-            value="N/A",
-            help="Grant/proposal success rate"
+            label="📋 Templates",
+            value="0",
+            help="Prompt templates available"
         )
 
     st.markdown("---")
 
-    # Quick actions
-    st.markdown("### Quick Actions")
+    # Quick Start Guide
+    st.markdown("### Getting Started")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
-        st.button("📤 Upload Documents", use_container_width=True, type="secondary")
+        st.markdown("""
+        **1. Start a Conversation**
+        - Go to AI Assistant to chat with the AI
+        - Get help drafting content
+        - Ask questions about your documents
+        """)
+
+        st.markdown("""
+        **2. Customize Your Experience**
+        - Set your preferences in User Preferences
+        - Choose default audience and tone
+        - Configure auto-save settings
+        """)
 
     with col2:
-        st.button("💬 Start Writing", use_container_width=True, type="primary")
+        st.markdown("""
+        **3. Manage Prompt Templates**
+        - Create reusable prompt templates
+        - Organize by category
+        - Use variables for flexibility
+        """)
 
-    with col3:
-        st.button("✍️ Create Writing Style", use_container_width=True, type="secondary")
+        st.markdown("""
+        **4. Configure System Settings** (Admin)
+        - Adjust LLM parameters
+        - Configure RAG pipeline
+        - Optimize for your use case
+        """)
 
     st.markdown("---")
 
     # Recent activity
     st.markdown("### Recent Activity")
-    st.info("No recent activity. Start by uploading documents or creating a writing style!")
+    st.info("No recent activity. Start by opening the AI Assistant or creating a prompt template!")
+
+    # Feature highlights
+    with st.expander("✨ Key Features"):
+        st.markdown("""
+        - **AI-Powered Writing**: Generate content with Claude's advanced AI
+        - **Personalized Preferences**: Save your default settings
+        - **Prompt Templates**: Reusable templates for common tasks
+        - **Multi-turn Conversations**: Maintain context across chat sessions
+        - **Flexible Configuration**: Customize the AI behavior to match your needs
+        """)
 
 
 def main():
