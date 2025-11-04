@@ -9,7 +9,7 @@ import logging
 import json
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 import asyncpg
 
 from app.config import get_settings
@@ -1905,7 +1905,6 @@ class DatabaseService:
             entity_uuid = None
             if entity_id:
                 try:
-                    from uuid import UUID
                     entity_uuid = UUID(entity_id) if isinstance(entity_id, str) else entity_id
                 except (ValueError, AttributeError):
                     # If it's not a valid UUID, leave it as None
@@ -2095,7 +2094,7 @@ class DatabaseService:
             # Convert entity_id to UUID if it's a string
             entity_uuid = None
             try:
-                from uuid import UUID
+                from uuid import UUID, uuid4
                 entity_uuid = UUID(entity_id) if isinstance(entity_id, str) else entity_id
             except (ValueError, AttributeError):
                 logger.warning(f"Invalid entity_id format: {entity_id}")
