@@ -150,6 +150,7 @@ def show_main_app():
 
     # Navigation - updated to match actual pages
     st.sidebar.page_link("app.py", label="Home", icon="🏠")
+    st.sidebar.page_link("pages/1_📂_Documents.py", label="Documents", icon="📂")
     st.sidebar.page_link("pages/3_💬_AI_Assistant.py", label="AI Assistant", icon="💬")
     st.sidebar.page_link("pages/4_⚙️_User_Preferences.py", label="User Preferences", icon="⚙️")
     st.sidebar.page_link("pages/5_📝_Prompt_Templates.py", label="Prompt Templates", icon="📝")
