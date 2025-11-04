@@ -348,78 +348,266 @@ def process_uploads(
 
 
 def show_document_library():
-    """Display the document library with all uploaded documents."""
+    """Display the document library with all uploaded documents using an interactive table."""
     st.markdown("### Document Library")
 
     client = get_api_client()
 
+    # Initialize session state for pagination
+    if 'doc_page' not in st.session_state:
+        st.session_state.doc_page = 0
+    if 'doc_per_page' not in st.session_state:
+        st.session_state.doc_per_page = 25
+
     try:
         # Fetch documents
         with st.spinner("Loading documents..."):
-            documents = client.get_documents(limit=100)
+            all_documents = client.get_documents(limit=1000)
 
-        if not documents:
+        if not all_documents:
             st.info("📭 No documents uploaded yet. Upload your first document in the 'Upload Documents' tab!")
             return
 
-        # Display count
-        st.markdown(f"**Total Documents:** {len(documents)}")
+        # Search and Filters Section
+        st.markdown("#### 🔍 Search & Filters")
 
-        # Filters
-        with st.expander("🔍 Filters", expanded=False):
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            search_query = st.text_input(
+                "Search documents",
+                placeholder="Search by filename, tags, or notes...",
+                label_visibility="collapsed",
+                key="doc_search"
+            )
+
+        with col2:
+            show_filters = st.checkbox("Show Advanced Filters", value=False)
+
+        # Advanced Filters
+        filter_type = None
+        filter_year = None
+        filter_program = None
+
+        if show_filters:
             col1, col2, col3 = st.columns(3)
-            with col1:
-                filter_type = st.multiselect("Document Type", options=["All"] + list(set([doc.get("type", "") for doc in documents])))
-            with col2:
-                filter_year = st.multiselect("Year", options=["All"] + sorted(list(set([str(doc.get("year", "")) for doc in documents if doc.get("year")])), reverse=True))
-            with col3:
-                filter_program = st.multiselect("Program", options=["All"] + list(set([prog for doc in documents for prog in doc.get("programs", [])])))
 
-        # Apply filters
-        filtered_docs = documents
-        if filter_type and "All" not in filter_type:
+            with col1:
+                # Get unique document types
+                unique_types = sorted(list(set([doc.get("type", "") for doc in all_documents if doc.get("type")])))
+                filter_type = st.multiselect(
+                    "Document Type",
+                    options=unique_types,
+                    key="filter_type"
+                )
+
+            with col2:
+                # Get unique years
+                unique_years = sorted(list(set([doc.get("year") for doc in all_documents if doc.get("year")])), reverse=True)
+                filter_year = st.multiselect(
+                    "Year",
+                    options=unique_years,
+                    key="filter_year"
+                )
+
+            with col3:
+                # Get unique programs
+                unique_programs = sorted(list(set([prog for doc in all_documents for prog in doc.get("programs", []) if prog])))
+                filter_program = st.multiselect(
+                    "Program",
+                    options=unique_programs,
+                    key="filter_program"
+                )
+
+        # Apply search filter
+        filtered_docs = all_documents
+        if search_query:
+            search_lower = search_query.lower()
+            filtered_docs = [
+                doc for doc in filtered_docs
+                if search_lower in doc.get('filename', '').lower()
+                or search_lower in ' '.join(doc.get('tags', [])).lower()
+                or search_lower in doc.get('notes', '').lower()
+            ]
+
+        # Apply type filter
+        if filter_type:
             filtered_docs = [doc for doc in filtered_docs if doc.get("type") in filter_type]
-        if filter_year and "All" not in filter_year:
-            filtered_docs = [doc for doc in filtered_docs if str(doc.get("year")) in filter_year]
-        if filter_program and "All" not in filter_program:
+
+        # Apply year filter
+        if filter_year:
+            filtered_docs = [doc for doc in filtered_docs if doc.get("year") in filter_year]
+
+        # Apply program filter
+        if filter_program:
             filtered_docs = [doc for doc in filtered_docs if any(prog in doc.get("programs", []) for prog in filter_program)]
 
-        st.markdown(f"**Showing:** {len(filtered_docs)} document(s)")
+        # Display stats
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Documents", len(all_documents))
+        with col2:
+            st.metric("Filtered Results", len(filtered_docs))
+        with col3:
+            total_chunks = sum(doc.get('chunk_count', 0) for doc in filtered_docs)
+            st.metric("Total Chunks", total_chunks)
+
         st.markdown("---")
 
-        # Display documents
+        if not filtered_docs:
+            st.warning("No documents match your search criteria. Try adjusting your filters.")
+            return
+
+        # Prepare data for dataframe
+        import pandas as pd
+
+        table_data = []
         for doc in filtered_docs:
-            with st.container():
-                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+            # Format programs as comma-separated string
+            programs_str = ', '.join(doc.get('programs', []))
 
-                with col1:
-                    st.markdown(f"**📄 {doc.get('filename', 'Unknown')}**")
-                    if doc.get('type'):
-                        st.caption(f"Type: {doc['type']}")
+            # Format outcome with emoji
+            outcome = doc.get('outcome')
+            outcome_display = ""
+            if outcome and outcome != 'N/A':
+                if outcome == 'Funded':
+                    outcome_display = "✅ Funded"
+                elif outcome == 'Not Funded':
+                    outcome_display = "❌ Not Funded"
+                elif outcome == 'Pending':
+                    outcome_display = "⏳ Pending"
+                else:
+                    outcome_display = outcome
 
-                with col2:
-                    if doc.get('year'):
-                        st.text(f"📅 Year: {doc['year']}")
-                    if doc.get('programs'):
-                        st.caption(f"Programs: {', '.join(doc['programs'][:2])}{' ...' if len(doc['programs']) > 2 else ''}")
+            table_data.append({
+                'Filename': doc.get('filename', 'Unknown'),
+                'Type': doc.get('type', ''),
+                'Year': doc.get('year', ''),
+                'Programs': programs_str,
+                'Outcome': outcome_display,
+                'Chunks': doc.get('chunk_count', 0),
+                'Upload Date': doc.get('created_at', ''),
+                'doc_id': doc.get('doc_id', '')  # Hidden but used for deletion
+            })
 
-                with col3:
-                    if doc.get('chunk_count'):
-                        st.text(f"📊 Chunks: {doc['chunk_count']}")
-                    if doc.get('outcome') and doc['outcome'] != 'N/A':
-                        outcome_emoji = "✅" if doc['outcome'] == 'Funded' else "❌" if doc['outcome'] == 'Not Funded' else "⏳"
-                        st.text(f"{outcome_emoji} {doc['outcome']}")
+        df = pd.DataFrame(table_data)
 
-                with col4:
-                    if st.button("🗑️", key=f"delete_{doc.get('doc_id', '')}"):
-                        try:
-                            client.delete_document(doc['doc_id'])
-                            st.success("Document deleted!")
-                            st.rerun()
-                        except APIError as e:
-                            st.error(f"Failed to delete: {e.message}")
+        # Pagination controls
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
-                st.markdown("---")
+        with col1:
+            per_page = st.selectbox(
+                "Rows per page",
+                options=[10, 25, 50, 100],
+                index=[10, 25, 50, 100].index(st.session_state.doc_per_page),
+                key="per_page_select"
+            )
+            if per_page != st.session_state.doc_per_page:
+                st.session_state.doc_per_page = per_page
+                st.session_state.doc_page = 0
+                st.rerun()
+
+        total_pages = (len(df) - 1) // st.session_state.doc_per_page + 1 if len(df) > 0 else 1
+        current_page = min(st.session_state.doc_page, total_pages - 1)
+
+        with col2:
+            if st.button("⏮️ First", disabled=current_page == 0):
+                st.session_state.doc_page = 0
+                st.rerun()
+
+        with col3:
+            if st.button("⏭️ Last", disabled=current_page >= total_pages - 1):
+                st.session_state.doc_page = total_pages - 1
+                st.rerun()
+
+        with col4:
+            st.text(f"Page {current_page + 1} of {total_pages}")
+
+        # Calculate pagination
+        start_idx = current_page * st.session_state.doc_per_page
+        end_idx = min(start_idx + st.session_state.doc_per_page, len(df))
+
+        # Display paginated dataframe
+        display_df = df.iloc[start_idx:end_idx].copy()
+
+        # Drop doc_id from display (keep it in the original df for deletion)
+        display_df_for_table = display_df.drop(columns=['doc_id'])
+
+        st.markdown(f"**Showing {start_idx + 1}-{end_idx} of {len(df)} documents**")
+
+        # Display interactive dataframe
+        st.dataframe(
+            display_df_for_table,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Filename": st.column_config.TextColumn("Filename", width="medium"),
+                "Type": st.column_config.TextColumn("Type", width="small"),
+                "Year": st.column_config.NumberColumn("Year", width="small"),
+                "Programs": st.column_config.TextColumn("Programs", width="medium"),
+                "Outcome": st.column_config.TextColumn("Outcome", width="small"),
+                "Chunks": st.column_config.NumberColumn("Chunks", width="small"),
+                "Upload Date": st.column_config.TextColumn("Upload Date", width="medium"),
+            }
+        )
+
+        # Delete functionality
+        st.markdown("---")
+        st.markdown("#### 🗑️ Delete Document")
+        st.caption("Select a document to delete from the table above, then enter its filename below to confirm deletion.")
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            delete_filename = st.text_input(
+                "Enter filename to delete",
+                placeholder="Type the exact filename to delete...",
+                key="delete_filename_input"
+            )
+
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)  # Spacer
+            delete_button = st.button("🗑️ Delete Document", type="primary", use_container_width=True)
+
+        if delete_button:
+            if not delete_filename:
+                st.error("❌ Please enter a filename.")
+            else:
+                # Find document by filename
+                matching_docs = [doc for doc in filtered_docs if doc.get('filename') == delete_filename]
+
+                if not matching_docs:
+                    st.error(f"❌ No document found with filename: {delete_filename}")
+                elif len(matching_docs) > 1:
+                    st.error(f"❌ Multiple documents found with that filename. Please contact support.")
+                else:
+                    doc_to_delete = matching_docs[0]
+                    try:
+                        with st.spinner(f"Deleting {delete_filename}..."):
+                            client.delete_document(doc_to_delete['doc_id'])
+                        st.success(f"✅ Successfully deleted: {delete_filename}")
+                        time.sleep(1)
+                        st.rerun()
+                    except APIError as e:
+                        st.error(f"❌ Failed to delete: {e.message}")
+                    except Exception as e:
+                        st.error(f"❌ Unexpected error: {str(e)}")
+
+        # Pagination buttons at bottom
+        st.markdown("---")
+        col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 1])
+
+        with col2:
+            if st.button("⬅️ Previous", disabled=current_page == 0, key="prev_bottom"):
+                st.session_state.doc_page = max(0, current_page - 1)
+                st.rerun()
+
+        with col3:
+            st.text(f"Page {current_page + 1}/{total_pages}")
+
+        with col4:
+            if st.button("Next ➡️", disabled=current_page >= total_pages - 1, key="next_bottom"):
+                st.session_state.doc_page = min(total_pages - 1, current_page + 1)
+                st.rerun()
 
     except AuthenticationError:
         st.error("❌ Authentication required. Please log in.")
