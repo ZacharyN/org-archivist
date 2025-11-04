@@ -595,3 +595,179 @@ def show_code_block(code: str, language: str = "python", line_numbers: bool = Fa
         )
     """
     st.code(code, language=language, line_numbers=line_numbers)
+
+
+# ===========================
+# Document Metadata Form
+# ===========================
+
+def show_document_metadata_form(
+    form_key: str = "document_metadata_form",
+    apply_to_all: bool = True,
+    default_values: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Display a document metadata collection form with validation.
+
+    This form collects all required metadata for document uploads including:
+    - Document type (dropdown)
+    - Year (number input)
+    - Programs (multi-select)
+    - Outcome (dropdown)
+    - Tags (text area)
+    - Notes (text area)
+    - Sensitivity confirmation (checkbox)
+
+    Args:
+        form_key: Unique key for the form (required for multiple forms on same page)
+        apply_to_all: Show caption indicating metadata applies to all files
+        default_values: Optional dict with default values for form fields
+
+    Returns:
+        Dictionary with form data if submitted and valid, None otherwise
+        Form data structure:
+        {
+            "type": str,
+            "year": int,
+            "programs": List[str],
+            "outcome": str or None,
+            "tags": List[str],
+            "notes": str,
+            "sensitivity_confirmed": bool
+        }
+
+    Example:
+        >>> metadata = show_document_metadata_form(
+        ...     form_key="upload_form",
+        ...     apply_to_all=True
+        ... )
+        >>> if metadata:
+        ...     # Process the metadata
+        ...     upload_document(file, metadata)
+    """
+    # Default values
+    defaults = default_values or {}
+
+    st.markdown("#### Document Metadata")
+    if apply_to_all:
+        st.caption("This metadata will be applied to all uploaded files")
+
+    with st.form(form_key):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            document_type = st.selectbox(
+                "Document Type *",
+                options=[
+                    "Grant Proposal",
+                    "Annual Report",
+                    "Program Description",
+                    "Impact Report",
+                    "Strategic Plan",
+                    "Donor Communication",
+                    "Other"
+                ],
+                index=defaults.get("type_index", 0),
+                help="Select the type of document you're uploading"
+            )
+
+            year = st.number_input(
+                "Year *",
+                min_value=1990,
+                max_value=datetime.now().year + 5,
+                value=defaults.get("year", datetime.now().year),
+                help="Year the document was created or published"
+            )
+
+        with col2:
+            programs = st.multiselect(
+                "Programs *",
+                options=[
+                    "Education",
+                    "Health",
+                    "Youth Development",
+                    "Community Development",
+                    "Arts & Culture",
+                    "Environment",
+                    "Economic Development",
+                    "Other"
+                ],
+                default=defaults.get("programs", None),
+                help="Select all programs that apply to this document"
+            )
+
+            outcome = st.selectbox(
+                "Outcome (for grants/proposals)",
+                options=["N/A", "Funded", "Not Funded", "Pending"],
+                index=defaults.get("outcome_index", 0),
+                help="If this is a grant or proposal, indicate the outcome"
+            )
+
+        # Tags
+        tags_input = st.text_area(
+            "Tags (optional)",
+            value=defaults.get("tags_input", ""),
+            placeholder="Enter tags separated by commas (e.g., literacy, STEM, youth)",
+            help="Add descriptive tags to help organize and find this document",
+            height=80
+        )
+
+        # Notes
+        notes = st.text_area(
+            "Notes (optional)",
+            value=defaults.get("notes", ""),
+            placeholder="Add any additional notes about this document...",
+            help="Optional notes or context about this document",
+            height=100
+        )
+
+        # Sensitivity confirmation checkbox
+        st.markdown("---")
+        sensitivity_confirmed = st.checkbox(
+            "✅ I confirm that these documents are public-facing and appropriate for AI processing",
+            value=defaults.get("sensitivity_confirmed", False),
+            help="You must confirm that the documents do not contain sensitive, confidential, or proprietary information"
+        )
+
+        # Submit button
+        col1, col2, col3 = st.columns([2, 1, 2])
+        with col2:
+            submit_button = st.form_submit_button(
+                "Upload Files",
+                use_container_width=True,
+                type="primary",
+                disabled=not sensitivity_confirmed
+            )
+
+        # Validation and return
+        if submit_button:
+            # Validation
+            validation_errors = []
+
+            if not sensitivity_confirmed:
+                validation_errors.append("Please confirm that the documents are appropriate for upload.")
+
+            if not programs:
+                validation_errors.append("Please select at least one program.")
+
+            # Show validation errors
+            if validation_errors:
+                for error in validation_errors:
+                    st.error(f"❌ {error}")
+                return None
+
+            # Parse tags
+            tags = [tag.strip() for tag in tags_input.split(",") if tag.strip()] if tags_input else []
+
+            # Return validated metadata
+            return {
+                "type": document_type,
+                "year": year,
+                "programs": programs,
+                "outcome": outcome if outcome != "N/A" else None,
+                "tags": tags,
+                "notes": notes,
+                "sensitivity_confirmed": sensitivity_confirmed
+            }
+
+    return None
