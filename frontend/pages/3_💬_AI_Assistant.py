@@ -47,6 +47,44 @@ def init_session_state():
     if "message_count" not in st.session_state:
         st.session_state.message_count = 0
 
+    # Conversation list from backend
+    if "conversations_list" not in st.session_state:
+        st.session_state.conversations_list = []
+
+    # Search query for conversations
+    if "conversation_search" not in st.session_state:
+        st.session_state.conversation_search = ""
+
+    # Delete confirmation state
+    if "delete_confirm_id" not in st.session_state:
+        st.session_state.delete_confirm_id = None
+
+    # Conversation context settings
+    if "context_writing_style" not in st.session_state:
+        st.session_state.context_writing_style = None
+
+    if "context_audience" not in st.session_state:
+        st.session_state.context_audience = None
+
+    if "context_section" not in st.session_state:
+        st.session_state.context_section = None
+
+    if "context_tone" not in st.session_state:
+        st.session_state.context_tone = 0.5
+
+    if "context_doc_types" not in st.session_state:
+        st.session_state.context_doc_types = []
+
+    if "context_years" not in st.session_state:
+        st.session_state.context_years = []
+
+    if "context_programs" not in st.session_state:
+        st.session_state.context_programs = []
+
+    # Context panel expanded state
+    if "context_expanded" not in st.session_state:
+        st.session_state.context_expanded = False
+
 
 def display_message(message: Dict[str, Any], sources: Optional[List[Dict[str, Any]]] = None):
     """
@@ -96,12 +134,35 @@ def send_message(user_message: str):
             for msg in st.session_state.messages
         ]
 
+        # Build context from session state
+        context = {}
+        if st.session_state.context_writing_style:
+            context["writing_style"] = st.session_state.context_writing_style
+        if st.session_state.context_audience:
+            context["audience"] = st.session_state.context_audience
+        if st.session_state.context_section:
+            context["section"] = st.session_state.context_section
+        if st.session_state.context_tone is not None:
+            context["tone"] = st.session_state.context_tone
+
+        # Add document filters if any are set
+        filters = {}
+        if st.session_state.context_doc_types:
+            filters["doc_types"] = st.session_state.context_doc_types
+        if st.session_state.context_years:
+            filters["years"] = st.session_state.context_years
+        if st.session_state.context_programs:
+            filters["programs"] = st.session_state.context_programs
+
+        if filters:
+            context["filters"] = filters
+
         # Call backend chat API
         with st.spinner("Thinking..."):
             response = client.send_chat_message(
                 message=user_message,
                 conversation_id=st.session_state.conversation_id,
-                context=None,  # TODO: Add context support (writing style, audience, etc.)
+                context=context if context else None,
                 stream=False
             )
 
@@ -158,6 +219,103 @@ def clear_conversation():
     logger.info("Conversation cleared")
 
 
+def load_conversations():
+    """Load conversation history from backend."""
+    try:
+        client = get_api_client()
+        conversations = client.get_conversations(skip=0, limit=50)
+        st.session_state.conversations_list = conversations if conversations else []
+        logger.info(f"Loaded {len(st.session_state.conversations_list)} conversations")
+    except AuthenticationError:
+        st.error("Please log in to access conversations.")
+        logger.error("Authentication error loading conversations")
+    except APIError as e:
+        st.error(f"Failed to load conversations: {e.message}")
+        logger.error(f"API error loading conversations: {e}")
+    except Exception as e:
+        st.error(f"Unexpected error loading conversations: {str(e)}")
+        logger.error(f"Unexpected error loading conversations: {e}", exc_info=True)
+
+
+def load_conversation(conversation_id: str):
+    """
+    Load a specific conversation and set it as active.
+
+    Args:
+        conversation_id: UUID of conversation to load
+    """
+    try:
+        client = get_api_client()
+        with st.spinner("Loading conversation..."):
+            conversation = client.get_conversation(conversation_id)
+
+        # Update session state with loaded conversation
+        st.session_state.conversation_id = conversation_id
+        st.session_state.messages = conversation.get("messages", [])
+        st.session_state.message_count = len(st.session_state.messages)
+
+        # Load context if available
+        context = conversation.get("context", {})
+        st.session_state.context_writing_style = context.get("writing_style")
+        st.session_state.context_audience = context.get("audience")
+        st.session_state.context_section = context.get("section")
+        st.session_state.context_tone = context.get("tone", 0.5)
+
+        filters = context.get("filters", {})
+        st.session_state.context_doc_types = filters.get("doc_types", [])
+        st.session_state.context_years = filters.get("years", [])
+        st.session_state.context_programs = filters.get("programs", [])
+
+        logger.info(f"Loaded conversation: {conversation_id}")
+        st.success(f"Loaded conversation with {st.session_state.message_count} messages")
+
+    except AuthenticationError:
+        st.error("Please log in to access conversations.")
+        logger.error("Authentication error loading conversation")
+    except APIError as e:
+        st.error(f"Failed to load conversation: {e.message}")
+        logger.error(f"API error loading conversation {conversation_id}: {e}")
+    except Exception as e:
+        st.error(f"Unexpected error loading conversation: {str(e)}")
+        logger.error(f"Unexpected error loading conversation {conversation_id}: {e}", exc_info=True)
+
+
+def delete_conversation_confirm(conversation_id: str):
+    """
+    Delete a conversation after confirmation.
+
+    Args:
+        conversation_id: UUID of conversation to delete
+    """
+    try:
+        client = get_api_client()
+        with st.spinner("Deleting conversation..."):
+            client.delete_conversation(conversation_id)
+
+        # Clear active conversation if it was deleted
+        if st.session_state.conversation_id == conversation_id:
+            clear_conversation()
+
+        # Reload conversation list
+        load_conversations()
+
+        # Clear delete confirmation state
+        st.session_state.delete_confirm_id = None
+
+        st.success("Conversation deleted successfully")
+        logger.info(f"Deleted conversation: {conversation_id}")
+
+    except AuthenticationError:
+        st.error("Please log in to delete conversations.")
+        logger.error("Authentication error deleting conversation")
+    except APIError as e:
+        st.error(f"Failed to delete conversation: {e.message}")
+        logger.error(f"API error deleting conversation {conversation_id}: {e}")
+    except Exception as e:
+        st.error(f"Unexpected error deleting conversation: {str(e)}")
+        logger.error(f"Unexpected error deleting conversation {conversation_id}: {e}", exc_info=True)
+
+
 def main():
     """Main application entry point."""
     init_session_state()
@@ -190,14 +348,291 @@ def main():
 
         st.markdown("---")
 
-        # TODO: Add conversation context controls
-        st.markdown("### Context Settings")
-        st.info("💡 Context controls (writing style, audience, etc.) coming soon!")
+        # Conversation History Panel
+        st.markdown("### Conversation History")
 
-        # Placeholder for future features
-        # writing_style = st.selectbox("Writing Style", ["Default", "Formal", "Conversational"])
-        # audience = st.selectbox("Audience", ["General", "Federal RFP", "Foundation Grant"])
-        # section = st.selectbox("Section", ["Introduction", "Problem Statement", "Methodology"])
+        # Load conversations button
+        col_load, col_refresh = st.columns([3, 1])
+        with col_load:
+            if st.button("📚 Load History", use_container_width=True):
+                load_conversations()
+                st.rerun()
+        with col_refresh:
+            if st.button("🔄", use_container_width=True, help="Refresh conversation list"):
+                load_conversations()
+                st.rerun()
+
+        # Search/filter conversations
+        search_query = st.text_input(
+            "Search conversations",
+            value=st.session_state.conversation_search,
+            placeholder="Search by message content...",
+            label_visibility="collapsed"
+        )
+        st.session_state.conversation_search = search_query
+
+        # Display conversation list
+        if st.session_state.conversations_list:
+            # Filter conversations by search query
+            filtered_conversations = st.session_state.conversations_list
+            if search_query:
+                filtered_conversations = [
+                    conv for conv in st.session_state.conversations_list
+                    if search_query.lower() in str(conv.get('messages', [])).lower()
+                    or search_query.lower() in str(conv.get('conversation_id', '')).lower()
+                ]
+
+            if filtered_conversations:
+                st.markdown(f"**{len(filtered_conversations)} conversation(s)**")
+
+                # Display each conversation
+                for conv in filtered_conversations:
+                    conversation_id = conv.get('conversation_id')
+                    messages = conv.get('messages', [])
+                    message_count = len(messages)
+                    created_at = conv.get('created_at', '')
+
+                    # Get first user message as preview
+                    preview = "No messages"
+                    for msg in messages:
+                        if msg.get('role') == 'user':
+                            preview = msg.get('content', '')[:50]
+                            if len(msg.get('content', '')) > 50:
+                                preview += "..."
+                            break
+
+                    # Create expandable container for each conversation
+                    with st.container():
+                        col_info, col_actions = st.columns([4, 1])
+
+                        with col_info:
+                            # Load conversation button
+                            is_active = st.session_state.conversation_id == conversation_id
+                            button_label = f"{'🟢' if is_active else '💬'} {message_count} msgs"
+                            if st.button(
+                                button_label,
+                                key=f"load_{conversation_id}",
+                                use_container_width=True,
+                                type="primary" if is_active else "secondary"
+                            ):
+                                load_conversation(conversation_id)
+                                st.rerun()
+
+                            # Preview text
+                            st.caption(f"{preview}")
+
+                        with col_actions:
+                            # Delete button with confirmation
+                            if st.session_state.delete_confirm_id == conversation_id:
+                                if st.button("✅", key=f"confirm_{conversation_id}", use_container_width=True, help="Confirm delete"):
+                                    delete_conversation_confirm(conversation_id)
+                                    st.rerun()
+                                if st.button("❌", key=f"cancel_{conversation_id}", use_container_width=True, help="Cancel"):
+                                    st.session_state.delete_confirm_id = None
+                                    st.rerun()
+                            else:
+                                if st.button("🗑️", key=f"delete_{conversation_id}", use_container_width=True, help="Delete conversation"):
+                                    st.session_state.delete_confirm_id = conversation_id
+                                    st.rerun()
+
+                        st.markdown("---")
+            else:
+                st.info("No conversations match your search.")
+        else:
+            st.info("No conversation history. Click 'Load History' to fetch your conversations.")
+
+        st.markdown("---")
+
+        # Context Settings Panel
+        st.markdown("### Context Settings")
+
+        # Collapsible context panel
+        with st.expander("⚙️ Configure Context", expanded=st.session_state.context_expanded):
+            st.markdown("**Writing Parameters**")
+
+            # Writing Style selector
+            style_options = ["None", "Professional", "Academic", "Conversational", "Persuasive", "Technical"]
+            current_style_index = 0
+            if st.session_state.context_writing_style:
+                try:
+                    current_style_index = style_options.index(st.session_state.context_writing_style)
+                except ValueError:
+                    current_style_index = 0
+
+            writing_style = st.selectbox(
+                "Writing Style",
+                options=style_options,
+                index=current_style_index,
+                help="Select the writing style for AI responses"
+            )
+            st.session_state.context_writing_style = None if writing_style == "None" else writing_style
+
+            # Audience dropdown
+            audience_options = [
+                "None",
+                "Federal Grant Reviewers",
+                "Foundation Grant Reviewers",
+                "Board Members",
+                "General Public",
+                "Donors",
+                "Stakeholders"
+            ]
+            current_audience_index = 0
+            if st.session_state.context_audience:
+                try:
+                    current_audience_index = audience_options.index(st.session_state.context_audience)
+                except ValueError:
+                    current_audience_index = 0
+
+            audience = st.selectbox(
+                "Target Audience",
+                options=audience_options,
+                index=current_audience_index,
+                help="Who will be reading this content?"
+            )
+            st.session_state.context_audience = None if audience == "None" else audience
+
+            # Section dropdown
+            section_options = [
+                "None",
+                "Executive Summary",
+                "Problem Statement",
+                "Project Description",
+                "Methodology",
+                "Budget Narrative",
+                "Evaluation Plan",
+                "Sustainability"
+            ]
+            current_section_index = 0
+            if st.session_state.context_section:
+                try:
+                    current_section_index = section_options.index(st.session_state.context_section)
+                except ValueError:
+                    current_section_index = 0
+
+            section = st.selectbox(
+                "Document Section",
+                options=section_options,
+                index=current_section_index,
+                help="What part of the document are you working on?"
+            )
+            st.session_state.context_section = None if section == "None" else section
+
+            # Tone slider
+            tone = st.slider(
+                "Tone Level",
+                min_value=0.0,
+                max_value=1.0,
+                value=st.session_state.context_tone,
+                step=0.1,
+                help="0 = Formal/Professional, 1 = Casual/Conversational"
+            )
+            st.session_state.context_tone = tone
+
+            st.markdown("---")
+            st.markdown("**Document Filters**")
+
+            # Document type filters
+            doc_type_options = ["Grant Proposal", "Report", "Letter", "Email", "Presentation", "Other"]
+            doc_types = st.multiselect(
+                "Document Types",
+                options=doc_type_options,
+                default=st.session_state.context_doc_types,
+                help="Filter by document types to reference"
+            )
+            st.session_state.context_doc_types = doc_types
+
+            # Year filters
+            current_year = 2024
+            year_options = list(range(current_year, current_year - 10, -1))
+            years = st.multiselect(
+                "Years",
+                options=year_options,
+                default=st.session_state.context_years,
+                help="Filter documents by year"
+            )
+            st.session_state.context_years = years
+
+            # Program filters
+            program_options = ["Education", "Health", "Environment", "Arts", "Social Services", "Other"]
+            programs = st.multiselect(
+                "Programs",
+                options=program_options,
+                default=st.session_state.context_programs,
+                help="Filter by program area"
+            )
+            st.session_state.context_programs = programs
+
+            st.markdown("---")
+
+            # Save Context button
+            if st.button("💾 Save Context", use_container_width=True, type="primary"):
+                if st.session_state.conversation_id:
+                    try:
+                        client = get_api_client()
+
+                        # Prepare context payload
+                        context_data = {}
+                        if st.session_state.context_writing_style:
+                            context_data["writing_style"] = st.session_state.context_writing_style
+                        if st.session_state.context_audience:
+                            context_data["audience"] = st.session_state.context_audience
+                        if st.session_state.context_section:
+                            context_data["section"] = st.session_state.context_section
+                        if st.session_state.context_tone is not None:
+                            context_data["tone"] = st.session_state.context_tone
+
+                        # Add filters
+                        filters = {}
+                        if st.session_state.context_doc_types:
+                            filters["doc_types"] = st.session_state.context_doc_types
+                        if st.session_state.context_years:
+                            filters["years"] = st.session_state.context_years
+                        if st.session_state.context_programs:
+                            filters["programs"] = st.session_state.context_programs
+
+                        if filters:
+                            context_data["filters"] = filters
+
+                        # Save to backend
+                        with st.spinner("Saving context..."):
+                            response = client.update_conversation_context(
+                                conversation_id=st.session_state.conversation_id,
+                                context=context_data
+                            )
+
+                        if response.get("success"):
+                            st.success("✅ Context saved successfully!")
+                            logger.info(f"Context saved for conversation {st.session_state.conversation_id}")
+                        else:
+                            st.error(f"Failed to save context: {response.get('message', 'Unknown error')}")
+
+                    except AuthenticationError:
+                        st.error("Authentication required. Please log in again.")
+                    except APIError as e:
+                        st.error(f"Failed to save context: {e.message}")
+                    except Exception as e:
+                        st.error(f"An unexpected error occurred: {str(e)}")
+                        logger.error(f"Error saving context: {e}", exc_info=True)
+                else:
+                    st.warning("💡 Start a conversation first to save context!")
+
+        # Display current context summary
+        st.markdown("**Current Context:**")
+        context_summary = []
+        if st.session_state.context_writing_style:
+            context_summary.append(f"📝 Style: {st.session_state.context_writing_style}")
+        if st.session_state.context_audience:
+            context_summary.append(f"👥 Audience: {st.session_state.context_audience}")
+        if st.session_state.context_section:
+            context_summary.append(f"📄 Section: {st.session_state.context_section}")
+
+        if context_summary:
+            for item in context_summary:
+                st.markdown(f"- {item}")
+            st.markdown(f"- 🎭 Tone: {st.session_state.context_tone:.1f}")
+        else:
+            st.info("No context configured")
 
     # Main chat area
     st.markdown("---")
