@@ -105,6 +105,10 @@ app.add_middleware(
 
 # Configure custom middleware and exception handlers
 from app.middleware import configure_middleware, configure_exception_handlers
+from app.middleware.audit import AuditLoggingMiddleware
+
+# Add audit logging middleware (Phase 5)
+app.add_middleware(AuditLoggingMiddleware)
 
 metrics_middleware = configure_middleware(app)
 configure_exception_handlers(app)

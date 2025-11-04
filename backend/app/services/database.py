@@ -1855,6 +1855,88 @@ class DatabaseService:
             logger.error(f"Failed to add message to conversation {conversation_id}: {e}")
             raise
 
+    # ======================
+    # Audit Log Methods (Phase 5)
+    # ======================
+
+    async def create_audit_log(
+        self,
+        event_type: str,
+        entity_type: str,
+        entity_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create an audit log entry
+
+        Args:
+            event_type: Type of event (e.g., "document.upload", "output.create")
+            entity_type: Type of entity affected (e.g., "document", "output")
+            entity_id: ID of affected entity (optional)
+            user_id: ID of user performing action (optional)
+            details: Additional details as JSONB (optional)
+
+        Returns:
+            Created audit log entry
+
+        Raises:
+            Exception: If audit log creation fails
+        """
+        if not self.pool:
+            await self.connect()
+
+        # Generate unique log ID
+        log_id = uuid4()
+
+        query = """
+            INSERT INTO audit_log (
+                log_id, event_type, entity_type, entity_id, user_id, details, created_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7
+            )
+            RETURNING log_id, event_type, entity_type, entity_id, user_id, details, created_at
+        """
+
+        try:
+            now = datetime.utcnow()
+
+            # Convert entity_id to UUID if it's a string
+            entity_uuid = None
+            if entity_id:
+                try:
+                    from uuid import UUID
+                    entity_uuid = UUID(entity_id) if isinstance(entity_id, str) else entity_id
+                except (ValueError, AttributeError):
+                    # If it's not a valid UUID, leave it as None
+                    logger.warning(f"Invalid entity_id format: {entity_id}")
+
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query,
+                    log_id,
+                    event_type,
+                    entity_type,
+                    entity_uuid,
+                    user_id,
+                    json.dumps(details) if details else None,
+                    now
+                )
+
+                return {
+                    "log_id": str(row["log_id"]),
+                    "event_type": row["event_type"],
+                    "entity_type": row["entity_type"],
+                    "entity_id": str(row["entity_id"]) if row["entity_id"] else None,
+                    "user_id": row["user_id"],
+                    "details": row["details"],
+                    "created_at": row["created_at"].isoformat(),
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to create audit log: {e}")
+            raise
+
 
 # Singleton instance
 _db_service: Optional[DatabaseService] = None
