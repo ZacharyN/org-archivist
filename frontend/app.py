@@ -96,7 +96,7 @@ def show_login_page():
                             response = client.login(email, password)
 
                         # Successful login
-                        if response.get("success") and response.get("user"):
+                        if response and response.get("user"):
                             user = response.get("user")
                             st.session_state.authenticated = True
                             st.session_state.user = user
@@ -121,11 +121,18 @@ def show_login_page():
                     st.error("Please enter both email and password.")
 
         st.markdown("---")
-        st.markdown("""
-        <div style='text-align: center; color: #666; font-size: 0.9em;'>
-            <p>Don't have an account? Contact your administrator.</p>
-        </div>
-        """, unsafe_allow_html=True)
+
+        # Link to registration page
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Create New Account", use_container_width=True):
+                st.switch_page("pages/2_📝_Register.py")
+        with col_b:
+            st.markdown("""
+            <div style='text-align: center; color: #666; font-size: 0.85em; padding-top: 8px;'>
+                <p>Need help? Contact admin</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 def show_main_app():

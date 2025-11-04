@@ -388,6 +388,50 @@ class APIClient:
             logger.error(f"Login failed for {email}: {e}")
             raise
 
+    def register(
+        self,
+        email: str,
+        password: str,
+        full_name: Optional[str] = None,
+        role: str = "writer"
+    ) -> Dict[str, Any]:
+        """
+        Register a new user account.
+
+        Args:
+            email: User email
+            password: User password (min 8 characters)
+            full_name: User's full name (optional)
+            role: User role (admin, editor, writer - defaults to writer)
+
+        Returns:
+            User profile response
+
+        Raises:
+            ValidationError: If validation fails
+            APIError: If registration fails
+        """
+        try:
+            response = self._request(
+                method="POST",
+                endpoint="/api/auth/register",
+                json={
+                    "email": email,
+                    "password": password,
+                    "full_name": full_name,
+                    "role": role
+                },
+                include_auth=False,  # No auth needed for registration
+                auto_refresh=False  # Can't refresh during registration
+            )
+
+            logger.info(f"Successfully registered user: {email}")
+            return response
+
+        except APIError as e:
+            logger.error(f"Registration failed for {email}: {e}")
+            raise
+
     def logout(self) -> Dict[str, Any]:
         """
         Logout current user and invalidate session.
@@ -777,6 +821,27 @@ class APIClient:
         return self._request(
             method="DELETE",
             endpoint=f"/api/conversations/{conversation_id}"
+        )
+
+    def update_conversation_context(
+        self,
+        conversation_id: str,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update the context for a specific conversation.
+
+        Args:
+            conversation_id: Conversation UUID
+            context: Context data (writing_style, audience, section, tone, filters)
+
+        Returns:
+            Updated conversation data
+        """
+        return self._request(
+            method="POST",
+            endpoint=f"/api/chat/conversations/{conversation_id}/context",
+            json=context
         )
 
     # ========== Outputs Endpoints ==========
