@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.api_client import get_api_client, APIError, AuthenticationError
 from config.settings import settings
+from components.auth import show_user_profile, logout as auth_logout
 
 logger = logging.getLogger(__name__)
 
@@ -167,15 +168,7 @@ def show_main_app():
 
     # Logout button
     if st.sidebar.button("🚪 Sign Out", use_container_width=True):
-        try:
-            client = get_api_client()
-            client.logout()
-        except Exception as e:
-            logger.error(f"Error during logout: {e}")
-
-        # Clear session state
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
+        auth_logout()
         st.rerun()
 
     # Main content
