@@ -15,10 +15,12 @@ from uuid import uuid4, UUID
 from datetime import datetime
 
 from ..models.query import ChatMessage, ChatRequest, ChatResponse, Source
-from ..models.conversation import ConversationContext, SessionMetadata
+from ..models.conversation import ConversationContext, ConversationContextResponse, SessionMetadata
 from ..models.common import ErrorResponse
 from ..services.database import DatabaseService
 from ..dependencies import get_database
+from ..api.auth import get_current_user_from_token
+from ..db.models import User
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
@@ -448,4 +450,196 @@ async def list_conversations(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list conversations: {str(e)}"
+        )
+
+
+@router.post(
+    "/conversations/{conversation_id}/context",
+    response_model=ConversationContextResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Conversation not found"},
+        403: {"model": ErrorResponse, "description": "Not authorized to access this conversation"},
+        400: {"model": ErrorResponse, "description": "Invalid context data"},
+    },
+    summary="Update conversation context",
+    description="""
+    Update the context for a specific conversation.
+
+    The context includes:
+    - writing_style_id: ID of the writing style being used
+    - audience: Target audience (Federal RFP, Foundation Grant, etc.)
+    - section: Current section being worked on
+    - tone: Desired tone (formal, warm, conversational, etc.)
+    - filters: Document filters for context-aware retrieval
+    - artifacts: History of generated artifacts with versions
+    - last_query: Last user query/request
+    - session_metadata: Session tracking information
+
+    Requires authentication. Users can only update context for conversations they own.
+    """,
+)
+async def update_conversation_context(
+    conversation_id: str,
+    context: ConversationContext,
+    current_user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
+) -> ConversationContextResponse:
+    """
+    Update conversation context.
+
+    Args:
+        conversation_id: UUID of the conversation
+        context: New context data
+        current_user: Authenticated user (from token)
+        db: Database service
+
+    Returns:
+        Updated conversation context with timestamp
+
+    Raises:
+        HTTPException: If conversation not found, user not authorized, or validation fails
+    """
+    try:
+        conversation_uuid = UUID(conversation_id)
+
+        # Get conversation
+        conversation = await db.get_conversation(conversation_uuid)
+
+        if conversation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Conversation {conversation_id} not found"
+            )
+
+        # Check ownership if conversation has a user_id
+        if conversation.get("user_id") and conversation.get("user_id") != current_user.email:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this conversation"
+            )
+
+        # Convert context to dict and update
+        context_dict = context.model_dump(exclude_none=True)
+
+        # Update conversation context
+        await db.update_conversation(
+            conversation_id=conversation_uuid,
+            context=json.dumps(context_dict)
+        )
+
+        # Get updated conversation to retrieve updated_at
+        updated_conversation = await db.get_conversation(conversation_uuid)
+        updated_at = updated_conversation.get("updated_at", datetime.utcnow())
+
+        return ConversationContextResponse(
+            conversation_id=conversation_id,
+            context=context,
+            updated_at=updated_at
+        )
+
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid conversation ID format"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update conversation context: {str(e)}"
+        )
+
+
+@router.get(
+    "/conversations/{conversation_id}/context",
+    response_model=ConversationContextResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Conversation not found"},
+        403: {"model": ErrorResponse, "description": "Not authorized to access this conversation"},
+    },
+    summary="Get conversation context",
+    description="""
+    Retrieve the current context for a specific conversation.
+
+    Returns the full context state including writing style, audience, filters,
+    artifacts, and session metadata.
+
+    Requires authentication. Users can only access context for conversations they own.
+    """,
+)
+async def get_conversation_context(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user_from_token),
+    db: DatabaseService = Depends(get_database)
+) -> ConversationContextResponse:
+    """
+    Get conversation context.
+
+    Args:
+        conversation_id: UUID of the conversation
+        current_user: Authenticated user (from token)
+        db: Database service
+
+    Returns:
+        Current conversation context with timestamp
+
+    Raises:
+        HTTPException: If conversation not found or user not authorized
+    """
+    try:
+        conversation_uuid = UUID(conversation_id)
+
+        # Get conversation
+        conversation = await db.get_conversation(conversation_uuid)
+
+        if conversation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Conversation {conversation_id} not found"
+            )
+
+        # Check ownership if conversation has a user_id
+        if conversation.get("user_id") and conversation.get("user_id") != current_user.email:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this conversation"
+            )
+
+        # Parse context from conversation
+        context_data = conversation.get("context", {})
+
+        # Handle case where context might be stored as a string (JSON)
+        if isinstance(context_data, str):
+            try:
+                context_data = json.loads(context_data)
+            except json.JSONDecodeError:
+                context_data = {}
+
+        # Create ConversationContext from data, handling missing/corrupt context gracefully
+        try:
+            context = ConversationContext(**context_data) if context_data else ConversationContext()
+        except Exception:
+            # If context is corrupted, return empty context
+            context = ConversationContext()
+
+        updated_at = conversation.get("updated_at", datetime.utcnow())
+
+        return ConversationContextResponse(
+            conversation_id=conversation_id,
+            context=context,
+            updated_at=updated_at
+        )
+
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid conversation ID format"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get conversation context: {str(e)}"
         )
