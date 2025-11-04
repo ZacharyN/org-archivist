@@ -32,7 +32,10 @@ if config.config_file_name is not None:
 settings = Settings()
 
 # Override database URL from environment/config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Convert async URL to sync URL for Alembic migrations
+# Alembic runs migrations synchronously and cannot use asyncpg driver
+database_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
+config.set_main_option("sqlalchemy.url", database_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
