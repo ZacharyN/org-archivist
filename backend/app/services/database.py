@@ -1937,6 +1937,193 @@ class DatabaseService:
             logger.error(f"Failed to create audit log: {e}")
             raise
 
+    async def query_audit_log(
+        self,
+        user_id: Optional[str] = None,
+        event_type: Optional[str] = None,
+        entity_type: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        page: int = 1,
+        per_page: int = 50
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """
+        Query audit logs with filters and pagination
+
+        Args:
+            user_id: Filter by user ID
+            event_type: Filter by event type (e.g., 'document.upload')
+            entity_type: Filter by entity type (e.g., 'document')
+            start_date: Filter logs after this timestamp
+            end_date: Filter logs before this timestamp
+            page: Page number (1-indexed)
+            per_page: Number of results per page (max 100)
+
+        Returns:
+            Tuple of (logs list, total count)
+
+        Raises:
+            Exception: If query fails
+        """
+        if not self.pool:
+            await self.connect()
+
+        # Build WHERE clause dynamically based on filters
+        conditions = []
+        params = {}
+        param_counter = 1
+
+        if user_id:
+            conditions.append(f"user_id = ${param_counter}")
+            params[f"param{param_counter}"] = user_id
+            param_counter += 1
+
+        if event_type:
+            conditions.append(f"event_type = ${param_counter}")
+            params[f"param{param_counter}"] = event_type
+            param_counter += 1
+
+        if entity_type:
+            conditions.append(f"entity_type = ${param_counter}")
+            params[f"param{param_counter}"] = entity_type
+            param_counter += 1
+
+        if start_date:
+            conditions.append(f"created_at >= ${param_counter}")
+            params[f"param{param_counter}"] = start_date
+            param_counter += 1
+
+        if end_date:
+            conditions.append(f"created_at <= ${param_counter}")
+            params[f"param{param_counter}"] = end_date
+            param_counter += 1
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        try:
+            async with self.pool.acquire() as conn:
+                # Get total count
+                count_query = f"SELECT COUNT(*) FROM audit_log {where_clause}"
+                total_count = await conn.fetchval(
+                    count_query,
+                    *[params[f"param{i}"] for i in range(1, param_counter)]
+                )
+
+                # Get paginated results
+                offset = (page - 1) * per_page
+                limit_params_start = param_counter
+                params[f"param{param_counter}"] = per_page
+                param_counter += 1
+                params[f"param{param_counter}"] = offset
+
+                data_query = f"""
+                    SELECT
+                        log_id,
+                        event_type,
+                        entity_type,
+                        entity_id,
+                        user_id,
+                        details,
+                        created_at
+                    FROM audit_log
+                    {where_clause}
+                    ORDER BY created_at DESC
+                    LIMIT ${limit_params_start} OFFSET ${limit_params_start + 1}
+                """
+
+                rows = await conn.fetch(
+                    data_query,
+                    *[params[f"param{i}"] for i in range(1, param_counter + 1)]
+                )
+
+                # Convert rows to dictionaries
+                logs = [
+                    {
+                        "log_id": row["log_id"],
+                        "event_type": row["event_type"],
+                        "entity_type": row["entity_type"],
+                        "entity_id": row["entity_id"],
+                        "user_id": row["user_id"],
+                        "details": json.loads(row["details"]) if row["details"] else {},
+                        "created_at": row["created_at"],
+                    }
+                    for row in rows
+                ]
+
+                return logs, total_count
+
+        except Exception as e:
+            logger.error(f"Failed to query audit logs: {e}")
+            raise
+
+    async def get_entity_audit_log(
+        self,
+        entity_type: str,
+        entity_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all audit logs for a specific entity
+
+        Args:
+            entity_type: Type of entity (e.g., 'document', 'output')
+            entity_id: ID of the entity
+
+        Returns:
+            List of audit log entries for the entity
+
+        Raises:
+            Exception: If query fails
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            SELECT
+                log_id,
+                event_type,
+                entity_type,
+                entity_id,
+                user_id,
+                details,
+                created_at
+            FROM audit_log
+            WHERE entity_type = $1 AND entity_id = $2
+            ORDER BY created_at DESC
+        """
+
+        try:
+            # Convert entity_id to UUID if it's a string
+            entity_uuid = None
+            try:
+                from uuid import UUID
+                entity_uuid = UUID(entity_id) if isinstance(entity_id, str) else entity_id
+            except (ValueError, AttributeError):
+                logger.warning(f"Invalid entity_id format: {entity_id}")
+                return []
+
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, entity_type, entity_uuid)
+
+                # Convert rows to dictionaries
+                logs = [
+                    {
+                        "log_id": row["log_id"],
+                        "event_type": row["event_type"],
+                        "entity_type": row["entity_type"],
+                        "entity_id": row["entity_id"],
+                        "user_id": row["user_id"],
+                        "details": json.loads(row["details"]) if row["details"] else {},
+                        "created_at": row["created_at"],
+                    }
+                    for row in rows
+                ]
+
+                return logs
+
+        except Exception as e:
+            logger.error(f"Failed to get entity audit log for {entity_type}/{entity_id}: {e}")
+            raise
+
 
 # Singleton instance
 _db_service: Optional[DatabaseService] = None
