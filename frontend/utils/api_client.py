@@ -871,6 +871,62 @@ class APIClient:
             endpoint=f"/api/outputs/{output_id}"
         )
 
+    # ========== Configuration Management ==========
+
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get system configuration.
+
+        Returns:
+            Dictionary with complete configuration including:
+            - llm_config: LLM model parameters
+            - rag_config: RAG pipeline settings
+            - user_preferences: User preference settings
+
+        Raises:
+            APIError: If request fails
+        """
+        return self._request(
+            method="GET",
+            endpoint="/api/config"
+        )
+
+    def update_config(self, config_update: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update system configuration.
+
+        Only provided sections will be updated. For example, you can update
+        just user preferences without affecting LLM or RAG config.
+
+        Args:
+            config_update: Dictionary with configuration updates
+                Supported keys:
+                - llm_config: LLM model configuration updates
+                - rag_config: RAG pipeline configuration updates
+                - user_preferences: User preference updates
+
+        Returns:
+            Dictionary with updated configuration
+
+        Raises:
+            ValidationError: If configuration validation fails
+            APIError: If request fails
+
+        Example:
+            >>> client.update_config({
+            ...     "user_preferences": {
+            ...         "default_audience": "Federal Grant Reviewers",
+            ...         "citation_style": "apa",
+            ...         "auto_save_interval": 120
+            ...     }
+            ... })
+        """
+        return self._request(
+            method="PUT",
+            endpoint="/api/config",
+            json=config_update
+        )
+
 
 # ========== Helper Functions ==========
 
