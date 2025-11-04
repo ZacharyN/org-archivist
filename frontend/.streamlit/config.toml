@@ -1,0 +1,25 @@
+[theme]
+# Primary colors
+primaryColor = "#4F8BF9"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"
+
+[server]
+# Server settings
+port = 8501
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 50
+
+[browser]
+# Browser settings
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
+[runner]
+# Runner settings
+magicEnabled = true
+fastReruns = true

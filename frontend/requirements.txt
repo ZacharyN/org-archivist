@@ -1,0 +1,32 @@
+# Frontend requirements for Org Archivist Streamlit application
+
+# Core framework
+streamlit>=1.31.0
+
+# HTTP client for API communication
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Configuration management
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# Data manipulation and display
+pandas>=2.1.0
+numpy>=1.24.0
+
+# Date/time utilities
+python-dateutil>=2.8.2
+
+# File handling
+python-multipart>=0.0.6
+
+# Markdown rendering
+markdown>=3.5.0
+
+# Session management
+extra-streamlit-components>=0.1.60
+
+# Charts and visualization (for future analytics)
+plotly>=5.18.0
+altair>=5.2.0
