@@ -927,6 +927,179 @@ class APIClient:
             json=config_update
         )
 
+    # ========== Prompt Template Management ==========
+
+    def list_prompts(
+        self,
+        category: Optional[str] = None,
+        active: Optional[bool] = None,
+        search: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        List all prompt templates with optional filtering.
+
+        Args:
+            category: Filter by category (audience, section, brand_voice, custom)
+            active: Filter by active status
+            search: Search in name and content
+
+        Returns:
+            Dictionary with structure:
+            {
+                "prompts": [list of prompt templates],
+                "total": int (total count)
+            }
+
+        Raises:
+            APIError: If request fails
+        """
+        params = {}
+        if category is not None:
+            params["category"] = category
+        if active is not None:
+            params["active"] = active
+        if search is not None:
+            params["search"] = search
+
+        return self._request(
+            method="GET",
+            endpoint="/api/prompts",
+            params=params
+        )
+
+    def get_prompt(self, prompt_id: str) -> Dict[str, Any]:
+        """
+        Get a specific prompt template.
+
+        Args:
+            prompt_id: Prompt template ID
+
+        Returns:
+            Dictionary with structure:
+            {
+                "prompt": {...},
+                "success": bool,
+                "message": str
+            }
+
+        Raises:
+            APIError: If request fails or prompt not found
+        """
+        return self._request(
+            method="GET",
+            endpoint=f"/api/prompts/{prompt_id}"
+        )
+
+    def create_prompt(
+        self,
+        name: str,
+        category: str,
+        content: str,
+        variables: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new prompt template.
+
+        Args:
+            name: Template name
+            category: Category (audience, section, brand_voice, custom)
+            content: Prompt content
+            variables: List of variable names used in the template
+
+        Returns:
+            Dictionary with structure:
+            {
+                "prompt": {...},
+                "success": bool,
+                "message": str
+            }
+
+        Raises:
+            ValidationError: If validation fails
+            APIError: If request fails
+        """
+        data = {
+            "name": name,
+            "category": category,
+            "content": content,
+            "variables": variables or []
+        }
+
+        return self._request(
+            method="POST",
+            endpoint="/api/prompts",
+            json=data
+        )
+
+    def update_prompt(
+        self,
+        prompt_id: str,
+        name: Optional[str] = None,
+        content: Optional[str] = None,
+        variables: Optional[List[str]] = None,
+        active: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """
+        Update an existing prompt template.
+
+        Args:
+            prompt_id: Prompt template ID
+            name: Updated name (optional)
+            content: Updated content (optional)
+            variables: Updated variables (optional)
+            active: Updated active status (optional)
+
+        Returns:
+            Dictionary with structure:
+            {
+                "prompt": {...},
+                "success": bool,
+                "message": str
+            }
+
+        Raises:
+            ValidationError: If validation fails
+            APIError: If request fails or prompt not found
+        """
+        data = {}
+        if name is not None:
+            data["name"] = name
+        if content is not None:
+            data["content"] = content
+        if variables is not None:
+            data["variables"] = variables
+        if active is not None:
+            data["active"] = active
+
+        return self._request(
+            method="PUT",
+            endpoint=f"/api/prompts/{prompt_id}",
+            json=data
+        )
+
+    def delete_prompt(self, prompt_id: str) -> Dict[str, Any]:
+        """
+        Delete a prompt template.
+
+        Args:
+            prompt_id: Prompt template ID
+
+        Returns:
+            Dictionary with structure:
+            {
+                "success": bool,
+                "message": str,
+                "prompt_id": str
+            }
+
+        Raises:
+            APIError: If request fails or prompt not found
+        """
+        return self._request(
+            method="DELETE",
+            endpoint=f"/api/prompts/{prompt_id}"
+        )
+
 
 # ========== Helper Functions ==========
 
