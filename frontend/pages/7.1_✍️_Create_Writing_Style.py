@@ -5,7 +5,8 @@ This page provides a multi-step wizard for creating new writing styles:
 - Step 1: Select style type (Grant, Proposal, Report)
 - Step 2: Collect 3-7 writing samples with validation
 - Step 3: AI analysis and prompt generation
-- Step 4: Review and finalization (future)
+- Step 4: Review and edit generated prompt
+- Step 5: Finalize and save writing style
 """
 
 import streamlit as st
@@ -18,7 +19,7 @@ from typing import List, Dict, Any, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.api_client import get_api_client, APIError, AuthenticationError, ValidationError
-from components.auth import require_auth
+from components.auth import require_authentication
 from components.ui import (
     show_loading_spinner,
     show_error_message,
@@ -795,6 +796,244 @@ def render_analysis_results():
     )
 
 
+def render_step4_review_prompt():
+    """Render Step 4: Review and edit generated prompt."""
+    st.markdown("## Step 4: Review & Customize Style Prompt")
+    st.markdown("""
+    The AI has generated a style prompt based on your samples.
+    Review and edit as needed before saving.
+    """)
+
+    st.markdown("---")
+
+    # Two-column layout: editable prompt on left, original samples on right
+    col1, col2 = st.columns([3, 2])
+
+    with col1:
+        st.markdown("### 📝 Style Prompt")
+
+        # Editable text area
+        edited_prompt = st.text_area(
+            "Style Prompt",
+            value=st.session_state.draft_prompt or "",
+            height=600,
+            help="Edit the prompt to refine the style guidelines",
+            key="edited_prompt_input"
+        )
+
+        # Update session state
+        st.session_state.draft_prompt = edited_prompt
+
+        # Word count
+        word_count = count_words(edited_prompt)
+        st.caption(f"Word count: {word_count:,} words")
+
+        # Validation messages
+        if word_count < 500:
+            st.warning("⚠️ Prompt is quite short. Consider adding more detail for better results.")
+        elif word_count > 5000:
+            st.warning("⚠️ Prompt is very long. Consider making it more concise.")
+
+    with col2:
+        st.markdown("### 📄 Original Samples")
+        st.caption("Reference your original samples while editing the prompt")
+
+        # Display original samples in expanders
+        for i in range(st.session_state.num_samples):
+            sample_text = st.session_state.writing_samples.get(f"sample_{i+1}", "")
+            word_count_sample = count_words(sample_text)
+
+            with st.expander(f"Sample {i+1} ({word_count_sample} words)"):
+                st.text_area(
+                    f"Sample {i+1} content",
+                    value=sample_text,
+                    height=200,
+                    disabled=True,
+                    label_visibility="collapsed",
+                    key=f"review_sample_{i+1}"
+                )
+
+    st.markdown("---")
+
+    # Optional: Reset button
+    st.markdown("#### 🔄 Prompt Actions")
+    if st.button("Reset to Original", help="Restore the AI-generated prompt"):
+        if st.session_state.original_draft_prompt:
+            st.session_state.draft_prompt = st.session_state.original_draft_prompt
+            st.rerun()
+
+    # Navigation buttons
+    st.markdown('<div class="nav-buttons">', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 3, 1])
+
+    with col1:
+        if st.button("« Back to Analysis", use_container_width=True):
+            st.session_state.wizard_step = 3
+            st.rerun()
+
+    with col3:
+        # Validation for proceeding
+        can_proceed = len(edited_prompt.strip()) >= 500
+        if st.button(
+            "Next: Save »",
+            use_container_width=True,
+            type="primary",
+            disabled=not can_proceed
+        ):
+            st.session_state.wizard_step = 5
+            st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_step5_finalize():
+    """Render Step 5: Finalize and save writing style."""
+    st.markdown("## Step 5: Name & Save Your Writing Style")
+    st.markdown("""
+    Give your style a name and optional description, then save it
+    to make it available in the AI Writing Assistant.
+    """)
+
+    st.markdown("---")
+
+    # Name input
+    style_name = st.text_input(
+        "Style Name *",
+        placeholder='e.g., "Federal Grant Style", "Foundation Proposal Voice"',
+        max_chars=100,
+        help="Choose a descriptive name that will help you identify this style",
+        key="style_name_input"
+    )
+
+    # Description input
+    style_description = st.text_area(
+        "Description (Optional)",
+        placeholder="When should this style be used? What makes it unique?",
+        max_chars=500,
+        height=100,
+        help="Add notes about when to use this style",
+        key="style_description_input"
+    )
+
+    st.markdown("---")
+
+    # Summary display
+    st.markdown("### 📋 Summary")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Style Type", st.session_state.selected_style_type.title())
+    with col2:
+        st.metric("Samples Used", st.session_state.num_samples)
+    with col3:
+        prompt_word_count = count_words(st.session_state.draft_prompt or "")
+        st.metric("Prompt Length", f"{prompt_word_count:,} words")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Preview expandable
+    with st.expander("👁️ Preview Style Prompt"):
+        st.text_area(
+            "Prompt content",
+            value=st.session_state.draft_prompt or "",
+            height=300,
+            disabled=True,
+            label_visibility="collapsed",
+            key="final_prompt_preview"
+        )
+
+    st.markdown("---")
+
+    # Navigation and save buttons
+    col1, col2, col3 = st.columns([1, 3, 1])
+
+    with col1:
+        if st.button("« Back to Edit", use_container_width=True):
+            st.session_state.wizard_step = 4
+            st.rerun()
+
+    with col3:
+        # Validation
+        can_save = (
+            style_name and
+            len(style_name.strip()) >= 3 and
+            st.session_state.draft_prompt
+        )
+
+        if st.button("💾 Save Writing Style", use_container_width=True, type="primary", disabled=not can_save):
+            save_writing_style(style_name, style_description)
+
+    # Show validation errors
+    if not can_save:
+        if not style_name or len(style_name.strip()) < 3:
+            st.warning("⚠️ Please enter a style name (at least 3 characters)")
+
+
+def save_writing_style(name: str, description: str):
+    """
+    Save the writing style to the backend.
+
+    Args:
+        name: Style name
+        description: Optional style description
+    """
+    import time
+
+    client = get_api_client()
+
+    try:
+        with st.spinner("Saving writing style..."):
+            # Prepare data
+            style_data = {
+                "name": name.strip(),
+                "type": st.session_state.selected_style_type,
+                "description": description.strip() if description else None,
+                "prompt_content": st.session_state.draft_prompt,
+                "samples": [
+                    st.session_state.writing_samples[f"sample_{i+1}"]
+                    for i in range(st.session_state.num_samples)
+                ],
+                "analysis_metadata": st.session_state.analysis_results,
+                "sample_count": st.session_state.num_samples,
+                "active": True
+            }
+
+            # Call API
+            result = client.create_writing_style(style_data)
+
+            # Success!
+            st.success(f"✅ Writing style '{name}' saved successfully!")
+            st.balloons()
+
+            # Clear wizard state
+            clear_wizard_state()
+
+            # Wait a moment then redirect
+            time.sleep(2)
+            st.switch_page("pages/7_✍️_Writing_Styles.py")
+
+    except ValidationError as e:
+        st.error(f"❌ Validation Error: {e.message}")
+    except APIError as e:
+        st.error(f"❌ Failed to save: {e.message}")
+    except Exception as e:
+        st.error("❌ Unexpected error occurred")
+        logger.error(f"Save error: {e}", exc_info=True)
+
+
+def clear_wizard_state():
+    """Clear all wizard session state variables."""
+    st.session_state.wizard_step = 1
+    st.session_state.selected_style_type = None
+    st.session_state.writing_samples = {}
+    st.session_state.num_samples = 3
+    st.session_state.analysis_results = None
+    st.session_state.draft_prompt = None
+    st.session_state.original_draft_prompt = None
+    st.session_state.analysis_processing = False
+    st.session_state.analysis_response = None
+
+
 def show_wizard_page():
     """Display the writing style creation wizard."""
     st.title("✍️ Create New Writing Style")
@@ -814,6 +1053,10 @@ def show_wizard_page():
         render_step2_collect_samples()
     elif st.session_state.wizard_step == 3:
         render_step3_ai_analysis()
+    elif st.session_state.wizard_step == 4:
+        render_step4_review_prompt()
+    elif st.session_state.wizard_step == 5:
+        render_step5_finalize()
     else:
         st.warning(f"Step {st.session_state.wizard_step} is not yet implemented")
 
@@ -821,7 +1064,7 @@ def show_wizard_page():
 def main():
     """Main entry point for the create writing style page."""
     # Require authentication
-    require_auth()
+    require_authentication()
 
     # Initialize session state
     init_session_state()

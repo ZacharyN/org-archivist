@@ -103,6 +103,9 @@ def show_login_page():
                             st.session_state.user = user
                             st.session_state.user_role = user.get('role', 'user')
 
+                            # Set flag for post-login redirect
+                            st.session_state.just_logged_in = True
+
                             logger.info(f"User {email} logged in successfully")
                             st.success(f"Welcome back, {user.get('name', user.get('email'))}!")
                             st.rerun()
@@ -138,6 +141,11 @@ def show_login_page():
 
 def show_main_app():
     """Display the main application after authentication."""
+    # Check if user just logged in and redirect to Documents page
+    if st.session_state.get('just_logged_in', False):
+        st.session_state.just_logged_in = False
+        st.switch_page("pages/1_📂_Documents.py")
+
     # Sidebar
     st.sidebar.title("📝 Org Archivist")
 

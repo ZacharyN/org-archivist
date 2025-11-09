@@ -17,7 +17,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.api_client import get_api_client, APIError, AuthenticationError, ValidationError
-from components.auth import require_auth
+from components.auth import require_authentication
 from components.ui import (
     show_loading_spinner,
     show_error_message,
@@ -557,7 +557,7 @@ def show_writing_styles_page():
 def main():
     """Main entry point for the writing styles page."""
     # Require authentication
-    require_auth()
+    require_authentication()
 
     # Initialize session state
     init_session_state()

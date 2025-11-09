@@ -21,7 +21,7 @@ from dateutil import parser as date_parser
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.api_client import get_api_client, APIError, AuthenticationError, ValidationError
-from components.auth import require_auth
+from components.auth import require_authentication
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -1011,7 +1011,7 @@ def show_statistics_dashboard():
 def main():
     """Main entry point for the documents page."""
     # Require authentication
-    require_auth()
+    require_authentication()
 
     # Initialize session state
     init_session_state()

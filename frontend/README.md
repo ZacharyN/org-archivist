@@ -63,11 +63,41 @@ frontend/
    ```
 
 2. **Configure environment**:
-   Create a `.env` file in the frontend directory:
-   ```env
-   API_BASE_URL=http://localhost:8000
-   DEBUG=false
+   Copy the example environment file and update as needed:
+   ```bash
+   cp .env.example .env
    ```
+
+   Or create a `.env` file manually in the frontend directory with these settings:
+   ```env
+   # API Configuration
+   API_BASE_URL=http://localhost:8000
+   API_TIMEOUT=30
+
+   # Application Settings
+   DEBUG=True
+
+   # Session Settings
+   SESSION_TIMEOUT_MINUTES=60
+
+   # UI Settings
+   ITEMS_PER_PAGE=25
+   MAX_FILE_UPLOAD_SIZE_MB=50
+
+   # Feature Flags
+   ENABLE_ANALYTICS=True
+   ENABLE_COLLABORATION=False
+   ```
+
+   **Environment Variables Reference:**
+   - `API_BASE_URL`: Backend API URL (use `http://backend:8000` for Docker)
+   - `API_TIMEOUT`: API request timeout in seconds (default: 30)
+   - `DEBUG`: Enable debug mode with detailed error messages (default: False)
+   - `SESSION_TIMEOUT_MINUTES`: User session duration (default: 60)
+   - `ITEMS_PER_PAGE`: Pagination size for lists (default: 25)
+   - `MAX_FILE_UPLOAD_SIZE_MB`: Maximum file upload size (default: 50)
+   - `ENABLE_ANALYTICS`: Enable analytics dashboard (default: False)
+   - `ENABLE_COLLABORATION`: Enable collaboration features (default: False)
 
 3. **Run the application**:
    ```bash
