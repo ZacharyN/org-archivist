@@ -635,6 +635,27 @@ class APIClient:
             endpoint=f"/api/documents/{document_id}"
         )
 
+    def get_document_stats(self) -> Dict[str, Any]:
+        """
+        Get document library statistics.
+
+        Returns:
+            Dictionary with statistics including:
+            - total_documents: Total number of documents
+            - total_chunks: Total number of chunks
+            - by_type: Document count by type
+            - by_year: Document count by year
+            - by_outcome: Document count by outcome
+            - avg_chunks_per_doc: Average chunks per document
+
+        Raises:
+            APIError: If request fails
+        """
+        return self._request(
+            method="GET",
+            endpoint="/api/documents/stats"
+        )
+
     # ========== Writing Styles Endpoints ==========
 
     def get_writing_styles(self, active_only: bool = True) -> List[Dict[str, Any]]:

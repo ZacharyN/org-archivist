@@ -10,8 +10,12 @@ import sys
 from pathlib import Path
 import logging
 import json
-from typing import List, Dict, Any
+import time
+from typing import List, Dict, Any, Optional
 from datetime import datetime
+import pandas as pd
+import plotly.graph_objects as go
+from dateutil import parser as date_parser
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -76,6 +80,189 @@ def init_session_state():
         st.session_state.uploaded_files_info = []
     if 'upload_progress' not in st.session_state:
         st.session_state.upload_progress = {}
+    if 'selected_documents' not in st.session_state:
+        st.session_state.selected_documents = set()
+    if 'show_doc_details' not in st.session_state:
+        st.session_state.show_doc_details = None
+    if 'delete_doc_id' not in st.session_state:
+        st.session_state.delete_doc_id = None
+    if 'bulk_delete_confirm' not in st.session_state:
+        st.session_state.bulk_delete_confirm = False
+
+
+@st.dialog("Document Details")
+def show_document_details_dialog(doc: Dict[str, Any]):
+    """
+    Display a modal dialog with full document metadata.
+
+    Args:
+        doc: Document dictionary with all metadata
+    """
+    st.markdown(f"### 📄 {doc.get('filename', 'Unknown')}")
+    st.markdown("---")
+
+    # Display metadata in organized sections
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Document Information**")
+        st.text(f"Type: {doc.get('type', 'N/A')}")
+        st.text(f"Year: {doc.get('year', 'N/A')}")
+        st.text(f"Chunks: {doc.get('chunk_count', 0)}")
+
+        # Format upload date
+        upload_date = doc.get('created_at', 'N/A')
+        if upload_date and upload_date != 'N/A':
+            try:
+                # Try to format if it's a valid datetime string
+                dt = date_parser.parse(upload_date)
+                upload_date = dt.strftime('%Y-%m-%d %H:%M')
+            except:
+                pass
+        st.text(f"Uploaded: {upload_date}")
+
+    with col2:
+        st.markdown("**Programs & Outcome**")
+        programs = doc.get('programs', [])
+        if programs:
+            for program in programs:
+                st.text(f"• {program}")
+        else:
+            st.text("No programs assigned")
+
+        outcome = doc.get('outcome', 'N/A')
+        if outcome and outcome != 'N/A':
+            st.text(f"\nOutcome: {outcome}")
+
+    # Tags section
+    st.markdown("**Tags**")
+    tags = doc.get('tags', [])
+    if tags:
+        st.markdown(", ".join([f"`{tag}`" for tag in tags]))
+    else:
+        st.text("No tags")
+
+    # Notes section
+    notes = doc.get('notes', '')
+    if notes:
+        st.markdown("**Notes**")
+        st.text_area("", value=notes, height=100, disabled=True, label_visibility="collapsed")
+
+    # Close button
+    if st.button("Close", use_container_width=True):
+        st.rerun()
+
+
+@st.dialog("Delete Document")
+def show_delete_confirmation_dialog(doc: Dict[str, Any]):
+    """
+    Display a confirmation dialog for deleting a single document.
+
+    Args:
+        doc: Document to delete
+    """
+    st.warning("⚠️ Are you sure you want to delete this document?")
+
+    st.markdown(f"**Filename:** {doc.get('filename', 'Unknown')}")
+    st.markdown(f"**Type:** {doc.get('type', 'N/A')}")
+    st.markdown(f"**Chunks:** {doc.get('chunk_count', 0)}")
+
+    st.markdown("---")
+    st.markdown("**This will:**")
+    st.markdown("- Permanently remove the document from the database")
+    st.markdown("- Delete all associated chunks from the vector store")
+    st.markdown("- Remove all associated metadata")
+    st.markdown("- **This action cannot be undone**")
+
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.delete_doc_id = None
+            st.rerun()
+
+    with col2:
+        if st.button("Delete Permanently", type="primary", use_container_width=True):
+            client = get_api_client()
+            try:
+                with st.spinner(f"Deleting {doc.get('filename')}..."):
+                    client.delete_document(doc['doc_id'])
+                st.success(f"✅ Successfully deleted: {doc.get('filename')}")
+                st.session_state.delete_doc_id = None
+                time.sleep(1)
+                st.rerun()
+            except APIError as e:
+                st.error(f"❌ Failed to delete: {e.message}")
+            except Exception as e:
+                st.error(f"❌ Unexpected error: {str(e)}")
+
+
+@st.dialog("Bulk Delete Documents")
+def show_bulk_delete_confirmation_dialog(documents: List[Dict[str, Any]]):
+    """
+    Display a confirmation dialog for deleting multiple documents.
+
+    Args:
+        documents: List of documents to delete
+    """
+    st.warning(f"⚠️ Are you sure you want to delete {len(documents)} document(s)?")
+
+    st.markdown("**Documents to be deleted:**")
+    for doc in documents:
+        st.markdown(f"- {doc.get('filename', 'Unknown')} ({doc.get('chunk_count', 0)} chunks)")
+
+    st.markdown("---")
+    st.markdown("**This will:**")
+    st.markdown(f"- Permanently remove **{len(documents)} documents** from the database")
+    st.markdown(f"- Delete all associated chunks from the vector store")
+    st.markdown("- Remove all associated metadata")
+    st.markdown("- **This action cannot be undone**")
+
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.bulk_delete_confirm = False
+            st.rerun()
+
+    with col2:
+        if st.button(f"Delete All {len(documents)}", type="primary", use_container_width=True):
+            client = get_api_client()
+            success_count = 0
+            failed = []
+
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            for idx, doc in enumerate(documents):
+                try:
+                    status_text.text(f"Deleting {idx + 1}/{len(documents)}: {doc.get('filename')}...")
+                    client.delete_document(doc['doc_id'])
+                    success_count += 1
+                except Exception as e:
+                    failed.append((doc.get('filename'), str(e)))
+
+                progress_bar.progress((idx + 1) / len(documents))
+
+            # Clear selection
+            st.session_state.selected_documents = set()
+            st.session_state.bulk_delete_confirm = False
+
+            # Show results
+            if success_count > 0:
+                st.success(f"✅ Successfully deleted {success_count} document(s)")
+            if failed:
+                st.error(f"❌ Failed to delete {len(failed)} document(s)")
+                with st.expander("Show errors"):
+                    for filename, error in failed:
+                        st.text(f"• {filename}: {error}")
+
+            time.sleep(2)
+            st.rerun()
 
 
 def show_upload_interface():
@@ -83,14 +270,17 @@ def show_upload_interface():
     st.title("📂 Document Library")
     st.markdown("Upload and manage your organization's documents")
 
-    # Create tabs for Upload and Library
-    tab1, tab2 = st.tabs(["📤 Upload Documents", "📚 Document Library"])
+    # Create tabs for Upload, Library, and Statistics
+    tab1, tab2, tab3 = st.tabs(["📤 Upload Documents", "📚 Document Library", "📊 Statistics"])
 
     with tab1:
         show_upload_section()
 
     with tab2:
         show_document_library()
+
+    with tab3:
+        show_statistics_dashboard()
 
 
 def show_upload_section():
@@ -459,8 +649,6 @@ def show_document_library():
             return
 
         # Prepare data for dataframe
-        import pandas as pd
-
         table_data = []
         for doc in filtered_docs:
             # Format programs as comma-separated string
@@ -616,6 +804,208 @@ def show_document_library():
     except Exception as e:
         st.error(f"❌ Unexpected error: {str(e)}")
         logger.error(f"Error in document library: {e}", exc_info=True)
+
+
+def show_statistics_dashboard():
+    """Display document library statistics dashboard."""
+    st.markdown("### 📊 Library Statistics")
+    st.markdown("Overview of your document collection")
+
+    client = get_api_client()
+
+    try:
+        # Fetch statistics from API
+        with st.spinner("Loading statistics..."):
+            stats = client.get_document_stats()
+            all_documents = client.get_documents(limit=1000)
+
+        if not stats:
+            st.warning("Unable to load statistics.")
+            return
+
+        # Top-level metrics
+        st.markdown("#### 📈 Summary Metrics")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                label="Total Documents",
+                value=stats.get("total_documents", 0),
+                help="Total number of documents in the library"
+            )
+
+        with col2:
+            st.metric(
+                label="Total Chunks",
+                value=f"{stats.get('total_chunks', 0):,}",
+                help="Total number of processed chunks across all documents"
+            )
+
+        with col3:
+            avg_chunks = stats.get("avg_chunks_per_doc", 0.0)
+            st.metric(
+                label="Avg. Chunks/Doc",
+                value=f"{avg_chunks:.1f}",
+                help="Average number of chunks per document"
+            )
+
+        st.markdown("---")
+
+        # Charts section
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### 📊 Distribution by Type")
+            by_type = stats.get("by_type", {})
+
+            if by_type:
+                # Create pie chart for document types
+                fig_type = go.Figure(data=[go.Pie(
+                    labels=list(by_type.keys()),
+                    values=list(by_type.values()),
+                    hole=0.3,
+                    marker=dict(
+                        colors=['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE']
+                    )
+                )])
+
+                fig_type.update_layout(
+                    showlegend=True,
+                    height=400,
+                    margin=dict(t=20, b=20, l=20, r=20)
+                )
+
+                st.plotly_chart(fig_type, use_container_width=True)
+            else:
+                st.info("No document type data available")
+
+        with col2:
+            st.markdown("#### 📅 Distribution by Year")
+            by_year = stats.get("by_year", {})
+
+            if by_year:
+                # Create bar chart for years
+                # Sort years for better visualization
+                years_sorted = sorted(by_year.items())
+                years = [str(year) for year, _ in years_sorted]
+                counts = [count for _, count in years_sorted]
+
+                fig_year = go.Figure(data=[go.Bar(
+                    x=years,
+                    y=counts,
+                    marker=dict(
+                        color=counts,
+                        colorscale='Viridis',
+                        showscale=False
+                    ),
+                    text=counts,
+                    textposition='auto',
+                )])
+
+                fig_year.update_layout(
+                    xaxis_title="Year",
+                    yaxis_title="Number of Documents",
+                    height=400,
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    showlegend=False
+                )
+
+                st.plotly_chart(fig_year, use_container_width=True)
+            else:
+                st.info("No year data available")
+
+        st.markdown("---")
+
+        # Outcome distribution (if available)
+        by_outcome = stats.get("by_outcome", {})
+        if by_outcome and any(by_outcome.values()):
+            st.markdown("#### ✅ Distribution by Outcome")
+
+            # Filter out N/A or null outcomes
+            filtered_outcomes = {k: v for k, v in by_outcome.items() if k and k != "N/A" and v > 0}
+
+            if filtered_outcomes:
+                col1, col2, col3, col4 = st.columns(4)
+
+                # Display outcome metrics
+                outcomes_display = [
+                    ("Funded", "✅", "green"),
+                    ("Not Funded", "❌", "red"),
+                    ("Pending", "⏳", "orange")
+                ]
+
+                cols = [col1, col2, col3, col4]
+                idx = 0
+
+                for outcome_name, emoji, color in outcomes_display:
+                    if outcome_name in filtered_outcomes:
+                        with cols[idx]:
+                            st.metric(
+                                label=f"{emoji} {outcome_name}",
+                                value=filtered_outcomes[outcome_name]
+                            )
+                            idx += 1
+
+                st.markdown("---")
+
+        # Recent uploads
+        st.markdown("#### 🕒 Recent Uploads")
+
+        if all_documents:
+            # Sort documents by upload date (most recent first)
+            sorted_docs = sorted(
+                all_documents,
+                key=lambda x: x.get('created_at', ''),
+                reverse=True
+            )[:10]  # Get top 10 most recent
+
+            if sorted_docs:
+                # Prepare data for display
+                recent_data = []
+                for doc in sorted_docs:
+                    # Format upload date
+                    upload_date = doc.get('created_at', 'N/A')
+                    if upload_date and upload_date != 'N/A':
+                        try:
+                            dt = date_parser.parse(upload_date)
+                            upload_date = dt.strftime('%Y-%m-%d %H:%M')
+                        except:
+                            pass
+
+                    recent_data.append({
+                        'Filename': doc.get('filename', 'Unknown'),
+                        'Type': doc.get('type', 'N/A'),
+                        'Year': doc.get('year', 'N/A'),
+                        'Chunks': doc.get('chunk_count', 0),
+                        'Upload Date': upload_date
+                    })
+
+                df_recent = pd.DataFrame(recent_data)
+
+                st.dataframe(
+                    df_recent,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Filename": st.column_config.TextColumn("Filename", width="large"),
+                        "Type": st.column_config.TextColumn("Type", width="medium"),
+                        "Year": st.column_config.TextColumn("Year", width="small"),
+                        "Chunks": st.column_config.NumberColumn("Chunks", width="small"),
+                        "Upload Date": st.column_config.TextColumn("Upload Date", width="medium"),
+                    }
+                )
+            else:
+                st.info("No recent uploads to display")
+        else:
+            st.info("No documents available")
+
+    except AuthenticationError:
+        st.error("❌ Authentication required. Please log in.")
+    except APIError as e:
+        st.error(f"❌ Error loading statistics: {e.message}")
+    except Exception as e:
+        st.error(f"❌ Unexpected error: {str(e)}")
+        logger.error(f"Error in statistics dashboard: {e}", exc_info=True)
 
 
 def main():
