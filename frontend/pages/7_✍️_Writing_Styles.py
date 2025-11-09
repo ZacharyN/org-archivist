@@ -445,7 +445,7 @@ def show_writing_styles_page():
 
     with col3:
         if st.button("➕ Create New Style", use_container_width=True, type="primary"):
-            st.info("Create functionality will navigate to the style creator page")
+            st.switch_page("pages/7.1_✍️_Create_Writing_Style.py")
 
     st.markdown("---")
 
