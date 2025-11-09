@@ -8,6 +8,7 @@ Users can chat with the AI assistant to get help with grant proposals, reports, 
 import streamlit as st
 from typing import Dict, Any, List, Optional
 import logging
+from datetime import datetime
 
 # Add parent directory to path for imports
 import sys
@@ -88,17 +89,70 @@ def init_session_state():
 
 def display_message(message: Dict[str, Any], sources: Optional[List[Dict[str, Any]]] = None):
     """
-    Display a single chat message with optional sources.
+    Display a single chat message with optional sources and metadata.
 
     Args:
-        message: Message dict with role and content
+        message: Message dict with role, content, timestamp, and optional metadata
         sources: Optional list of source citations
     """
     role = message.get("role", "assistant")
     content = message.get("content", "")
+    timestamp = message.get("timestamp")
+    metadata = message.get("metadata", {})
 
     with st.chat_message(role):
+        # Display message content
         st.markdown(content)
+
+        # Display metadata for assistant messages
+        if role == "assistant" and metadata:
+            cols = st.columns([2, 2, 2, 2])
+
+            # Generation time
+            if "generation_time" in metadata:
+                gen_time = metadata["generation_time"]
+                with cols[0]:
+                    st.caption(f"⏱️ {gen_time:.1f}s")
+
+            # Confidence score
+            if "confidence" in metadata:
+                confidence = metadata["confidence"]
+                # Color code confidence: green >0.8, yellow 0.6-0.8, red <0.6
+                if confidence >= 0.8:
+                    color = "🟢"
+                elif confidence >= 0.6:
+                    color = "🟡"
+                else:
+                    color = "🔴"
+                with cols[1]:
+                    st.caption(f"{color} {confidence:.0%}")
+
+            # Token count
+            if "token_count" in metadata:
+                with cols[2]:
+                    st.caption(f"📝 {metadata['token_count']} tokens")
+
+            # Model used
+            if "model" in metadata:
+                model_name = metadata["model"].split("-")[-1] if "-" in metadata["model"] else metadata["model"]
+                with cols[3]:
+                    st.caption(f"🤖 {model_name}")
+
+        # Display timestamp
+        if timestamp:
+            # Parse timestamp if it's a string
+            if isinstance(timestamp, str):
+                try:
+                    timestamp_dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    time_str = timestamp_dt.strftime("%I:%M %p")
+                except Exception:
+                    time_str = timestamp
+            elif isinstance(timestamp, datetime):
+                time_str = timestamp.strftime("%I:%M %p")
+            else:
+                time_str = str(timestamp)
+
+            st.caption(f"🕒 {time_str}")
 
         # Display sources if available
         if sources and len(sources) > 0:
@@ -173,22 +227,26 @@ def send_message(user_message: str):
         # Extract response data
         assistant_message = response.get("message", "")
         sources = response.get("sources", [])
+        metadata = response.get("metadata", {})
 
         # Update message count
         st.session_state.message_count = response.get("message_count", len(st.session_state.messages) + 2)
 
-        # Add user message to session
+        # Add user message to session with timestamp
         st.session_state.messages.append({
             "role": "user",
             "content": user_message,
-            "sources": None
+            "sources": None,
+            "timestamp": datetime.now().isoformat()
         })
 
-        # Add assistant response to session
+        # Add assistant response to session with timestamp and metadata
         st.session_state.messages.append({
             "role": "assistant",
             "content": assistant_message,
-            "sources": sources if sources else None
+            "sources": sources if sources else None,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": metadata
         })
 
         # Update conversation history for next request
@@ -651,6 +709,10 @@ def main():
     # Help section
     with st.expander("💡 Tips for Getting the Best Results"):
         st.markdown("""
+        **Keyboard Shortcuts:**
+        - **Enter** - Send message
+        - **Shift + Enter** - Add new line in message (multi-line messages)
+
         **Effective Prompts:**
         - Be specific about what you need help with
         - Provide context about your audience and purpose
@@ -663,7 +725,11 @@ def main():
         - "What should I include in the methodology section for a foundation grant?"
         - "Draft a compelling executive summary for our annual report."
 
-        **Note:** This is currently using stub responses. Full AI capabilities will be enabled soon!
+        **Understanding Response Metrics:**
+        - ⏱️ **Generation Time** - How long the AI took to generate the response
+        - 🟢🟡🔴 **Confidence** - AI's confidence in the response (Green >80%, Yellow 60-80%, Red <60%)
+        - 📝 **Token Count** - Length of the response in tokens
+        - 🤖 **Model** - Which AI model generated the response
         """)
 
 
