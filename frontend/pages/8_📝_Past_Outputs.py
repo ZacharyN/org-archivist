@@ -586,124 +586,340 @@ def show_outputs_cards(outputs: List[Dict[str, Any]]):
 
 
 def show_outputs_statistics(client):
-    """Display statistics about past outputs."""
-    st.markdown("### 📊 Outputs Statistics")
-    st.markdown("Overview of your generated outputs")
+    """Display comprehensive statistics and analytics about past outputs."""
+    st.markdown("### 📊 Outputs Analytics Dashboard")
+    st.markdown("Comprehensive analytics and insights from your generated outputs")
 
     try:
-        with st.spinner("Loading statistics..."):
-            all_outputs = client.get_outputs(limit=1000)
+        with st.spinner("Loading analytics..."):
+            # Fetch comprehensive analytics
+            analytics = client.get_analytics_summary()
+            funder_performance = client.get_funder_performance(limit=10)
 
-        if not all_outputs:
-            st.info("📭 No outputs available for statistics.")
-            return
+        overall = analytics.get('overall', {})
+        top_styles = analytics.get('top_writing_styles', [])
+        top_funders = analytics.get('top_funders', [])
+        year_trends = analytics.get('year_over_year_trends', [])
 
-        # Summary metrics
-        st.markdown("#### 📈 Summary Metrics")
-        col1, col2, col3, col4 = st.columns(4)
+        # Summary metrics row
+        st.markdown("#### 📈 Overall Performance")
+        col1, col2, col3, col4, col5 = st.columns(5)
 
         with col1:
-            st.metric("Total Outputs", len(all_outputs))
+            st.metric("Total Outputs", overall.get('total_outputs', 0))
 
         with col2:
-            awarded_count = sum(1 for o in all_outputs if o.get("status", "").lower() == "awarded")
-            st.metric("Awarded", awarded_count)
+            st.metric("Submitted", overall.get('submitted_count', 0))
 
         with col3:
-            total_requested = sum(o.get("requested_amount", 0) or 0 for o in all_outputs)
-            st.metric("Total Requested", format_currency(total_requested))
+            st.metric("Awarded", overall.get('awarded_count', 0))
 
         with col4:
-            total_awarded = sum(o.get("awarded_amount", 0) or 0 for o in all_outputs if o.get("status", "").lower() == "awarded")
+            success_rate = overall.get('success_rate', 0)
+            st.metric("Success Rate", f"{success_rate:.1f}%")
+
+        with col5:
+            total_awarded = overall.get('total_awarded', 0)
             st.metric("Total Awarded", format_currency(total_awarded))
 
         st.markdown("---")
 
-        # Charts
+        # Row 1: Success Rate by Writing Style and Funder
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("#### 📊 Distribution by Type")
-            type_counts = {}
-            for output in all_outputs:
-                output_type = output.get('output_type', 'Unknown')
-                type_counts[output_type] = type_counts.get(output_type, 0) + 1
+            st.markdown("#### 🎨 Success Rate by Writing Style")
+            if top_styles:
+                style_names = [f"Style {s['writing_style_id'][:8]}..." if s['writing_style_id'] else 'Unknown' for s in top_styles]
+                success_rates = [s['success_rate'] for s in top_styles]
+                submitted_counts = [s['submitted_count'] for s in top_styles]
 
-            if type_counts:
-                fig_type = go.Figure(data=[go.Pie(
-                    labels=list(type_counts.keys()),
-                    values=list(type_counts.values()),
-                    hole=0.3,
-                    marker=dict(
-                        colors=['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
-                    )
-                )])
+                fig_styles = go.Figure()
 
-                fig_type.update_layout(
-                    showlegend=True,
-                    height=400,
-                    margin=dict(t=20, b=20, l=20, r=20)
-                )
-
-                st.plotly_chart(fig_type, use_container_width=True)
-
-        with col2:
-            st.markdown("#### ✅ Distribution by Status")
-            status_counts = {}
-            for output in all_outputs:
-                status = output.get('status', 'draft')
-                status_counts[status] = status_counts.get(status, 0) + 1
-
-            if status_counts:
-                fig_status = go.Figure(data=[go.Bar(
-                    x=list(status_counts.keys()),
-                    y=list(status_counts.values()),
-                    marker=dict(
-                        color=list(status_counts.values()),
-                        colorscale='Viridis',
-                        showscale=False
-                    ),
-                    text=list(status_counts.values()),
+                fig_styles.add_trace(go.Bar(
+                    x=style_names,
+                    y=success_rates,
+                    text=[f"{rate:.1f}%" for rate in success_rates],
                     textposition='auto',
-                )])
+                    marker=dict(
+                        color=success_rates,
+                        colorscale='RdYlGn',
+                        showscale=True,
+                        colorbar=dict(title="Success Rate %")
+                    ),
+                    hovertemplate='<b>%{x}</b><br>Success Rate: %{y:.1f}%<br>Submitted: %{customdata}<extra></extra>',
+                    customdata=submitted_counts
+                ))
 
-                fig_status.update_layout(
-                    xaxis_title="Status",
-                    yaxis_title="Count",
+                fig_styles.update_layout(
+                    xaxis_title="Writing Style",
+                    yaxis_title="Success Rate (%)",
                     height=400,
                     margin=dict(t=20, b=20, l=20, r=20),
                     showlegend=False
                 )
 
-                st.plotly_chart(fig_status, use_container_width=True)
+                st.plotly_chart(fig_styles, use_container_width=True)
+            else:
+                st.info("No writing style data available. Start using writing styles in your outputs!")
 
-        # Success rate
+        with col2:
+            st.markdown("#### 🏛️ Success Rate by Funder")
+            if funder_performance:
+                funder_names = [f['funder_name'] for f in funder_performance[:10]]
+                funder_success_rates = [f['success_rate'] for f in funder_performance[:10]]
+                funder_submissions = [f['total_submissions'] for f in funder_performance[:10]]
+
+                fig_funders = go.Figure()
+
+                fig_funders.add_trace(go.Bar(
+                    x=funder_names,
+                    y=funder_success_rates,
+                    text=[f"{rate:.1f}%" for rate in funder_success_rates],
+                    textposition='auto',
+                    marker=dict(
+                        color=funder_success_rates,
+                        colorscale='Blues',
+                        showscale=True,
+                        colorbar=dict(title="Success Rate %")
+                    ),
+                    hovertemplate='<b>%{x}</b><br>Success Rate: %{y:.1f}%<br>Submissions: %{customdata}<extra></extra>',
+                    customdata=funder_submissions
+                ))
+
+                fig_funders.update_layout(
+                    xaxis_title="Funder",
+                    yaxis_title="Success Rate (%)",
+                    height=400,
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    showlegend=False,
+                    xaxis=dict(tickangle=-45)
+                )
+
+                st.plotly_chart(fig_funders, use_container_width=True)
+            else:
+                st.info("No funder data available. Start tracking funders in your outputs!")
+
         st.markdown("---")
-        st.markdown("#### 📈 Success Rate")
 
-        grants_proposals = [o for o in all_outputs if o.get('output_type') in ['grant', 'proposal']]
-        if grants_proposals:
-            submitted = [o for o in grants_proposals if o.get('status') in ['awarded', 'not_awarded']]
-            awarded = [o for o in submitted if o.get('status') == 'awarded']
+        # Row 2: Award Amounts Over Time and Distribution by Type
+        col1, col2 = st.columns(2)
 
-            if submitted:
-                success_rate = (len(awarded) / len(submitted)) * 100
+        with col1:
+            st.markdown("#### 💰 Award Amounts Over Time")
+            if year_trends:
+                years = [t['year'] for t in year_trends]
+                awarded_amounts = [t['total_awarded'] for t in year_trends]
+                success_rates_by_year = [t['success_rate'] for t in year_trends]
 
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Submitted", len(submitted))
-                with col2:
-                    st.metric("Awarded", len(awarded))
-                with col3:
-                    st.metric("Success Rate", f"{success_rate:.1f}%")
+                fig_trends = go.Figure()
+
+                # Award amounts (bars)
+                fig_trends.add_trace(go.Bar(
+                    name='Total Awarded',
+                    x=years,
+                    y=awarded_amounts,
+                    text=[format_currency(amt) for amt in awarded_amounts],
+                    textposition='auto',
+                    marker=dict(color='#4ECDC4'),
+                    yaxis='y'
+                ))
+
+                # Success rate (line)
+                fig_trends.add_trace(go.Scatter(
+                    name='Success Rate',
+                    x=years,
+                    y=success_rates_by_year,
+                    mode='lines+markers',
+                    line=dict(color='#FF6B6B', width=3),
+                    marker=dict(size=10),
+                    yaxis='y2',
+                    hovertemplate='<b>%{x}</b><br>Success Rate: %{y:.1f}%<extra></extra>'
+                ))
+
+                fig_trends.update_layout(
+                    xaxis_title="Year",
+                    yaxis=dict(
+                        title="Total Awarded ($)",
+                        titlefont=dict(color="#4ECDC4"),
+                        tickfont=dict(color="#4ECDC4")
+                    ),
+                    yaxis2=dict(
+                        title="Success Rate (%)",
+                        titlefont=dict(color="#FF6B6B"),
+                        tickfont=dict(color="#FF6B6B"),
+                        overlaying='y',
+                        side='right'
+                    ),
+                    height=400,
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    hovermode='x unified',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
+                )
+
+                st.plotly_chart(fig_trends, use_container_width=True)
+            else:
+                st.info("No historical data available. Start submitting outputs with dates!")
+
+        with col2:
+            st.markdown("#### 📊 Distribution by Type")
+            if overall.get('by_type'):
+                type_data = overall['by_type']
+
+                fig_type = go.Figure(data=[go.Pie(
+                    labels=list(type_data.keys()),
+                    values=list(type_data.values()),
+                    hole=0.4,
+                    marker=dict(
+                        colors=['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
+                    ),
+                    textinfo='label+percent',
+                    hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>'
+                )])
+
+                fig_type.update_layout(
+                    height=400,
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    showlegend=True,
+                    legend=dict(
+                        orientation="v",
+                        yanchor="middle",
+                        y=0.5,
+                        xanchor="left",
+                        x=1.02
+                    )
+                )
+
+                st.plotly_chart(fig_type, use_container_width=True)
+            else:
+                st.info("No output type data available.")
+
+        st.markdown("---")
+
+        # Row 3: Detailed Funder Performance Table
+        st.markdown("#### 📋 Detailed Funder Performance")
+        if funder_performance:
+            funder_df = pd.DataFrame([
+                {
+                    'Funder': f['funder_name'],
+                    'Total Submissions': f['total_submissions'],
+                    'Awarded': f['awarded_count'],
+                    'Not Awarded': f['not_awarded_count'],
+                    'Pending': f['pending_count'],
+                    'Success Rate': f"{f['success_rate']:.1f}%",
+                    'Total Requested': format_currency(f['total_requested']),
+                    'Total Awarded': format_currency(f['total_awarded']),
+                    'Avg Award': format_currency(f['avg_award_amount'])
+                }
+                for f in funder_performance
+            ])
+
+            st.dataframe(
+                funder_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Funder": st.column_config.TextColumn("Funder", width="medium"),
+                    "Total Submissions": st.column_config.NumberColumn("Total", width="small"),
+                    "Awarded": st.column_config.NumberColumn("✅ Awarded", width="small"),
+                    "Not Awarded": st.column_config.NumberColumn("❌ Rejected", width="small"),
+                    "Pending": st.column_config.NumberColumn("⏳ Pending", width="small"),
+                    "Success Rate": st.column_config.TextColumn("Success %", width="small"),
+                    "Total Requested": st.column_config.TextColumn("Requested", width="small"),
+                    "Total Awarded": st.column_config.TextColumn("Awarded", width="small"),
+                    "Avg Award": st.column_config.TextColumn("Avg Award", width="small"),
+                }
+            )
+        else:
+            st.info("No funder performance data available.")
+
+        st.markdown("---")
+
+        # Row 4: Awards vs Requests Comparison
+        st.markdown("#### 💵 Awards vs Requests Analysis")
+        if overall.get('total_requested', 0) > 0:
+            col1, col2, col3 = st.columns(3)
+
+            total_requested = overall.get('total_requested', 0)
+            total_awarded = overall.get('total_awarded', 0)
+            award_rate = (total_awarded / total_requested * 100) if total_requested > 0 else 0
+
+            with col1:
+                st.metric(
+                    "Total Requested",
+                    format_currency(total_requested),
+                    help="Total amount requested across all submissions"
+                )
+
+            with col2:
+                st.metric(
+                    "Total Awarded",
+                    format_currency(total_awarded),
+                    help="Total amount awarded"
+                )
+
+            with col3:
+                st.metric(
+                    "Award Rate",
+                    f"{award_rate:.1f}%",
+                    help="Percentage of requested amount that was awarded"
+                )
+
+            # Visual comparison
+            fig_comparison = go.Figure()
+
+            fig_comparison.add_trace(go.Bar(
+                name='Requested',
+                x=['Amount'],
+                y=[total_requested],
+                text=[format_currency(total_requested)],
+                textposition='auto',
+                marker=dict(color='#FFA07A')
+            ))
+
+            fig_comparison.add_trace(go.Bar(
+                name='Awarded',
+                x=['Amount'],
+                y=[total_awarded],
+                text=[format_currency(total_awarded)],
+                textposition='auto',
+                marker=dict(color='#4ECDC4')
+            ))
+
+            fig_comparison.update_layout(
+                xaxis_title="",
+                yaxis_title="Amount ($)",
+                height=300,
+                margin=dict(t=20, b=20, l=20, r=20),
+                showlegend=True,
+                barmode='group',
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
+            )
+
+            st.plotly_chart(fig_comparison, use_container_width=True)
+        else:
+            st.info("No financial data available. Start tracking requested and awarded amounts!")
 
     except AuthenticationError:
         st.error("❌ Authentication required. Please log in.")
     except APIError as e:
-        st.error(f"❌ Error loading statistics: {e.message}")
+        st.error(f"❌ Error loading analytics: {e.message}")
+        logger.error(f"API error in analytics: {e}")
     except Exception as e:
-        st.error(f"❌ Unexpected error: {str(e)}")
-        logger.error(f"Error in outputs statistics: {e}", exc_info=True)
+        st.error(f"❌ Unexpected error loading analytics: {str(e)}")
+        logger.error(f"Error in outputs analytics: {e}", exc_info=True)
 
 
 def show_output_detail():
@@ -842,6 +1058,135 @@ def show_output_detail():
     with col_meta:
         # Metadata sidebar
         st.markdown("### 📊 Metadata")
+
+        # Success Tracking Form
+        st.markdown("#### 🎯 Success Tracking")
+
+        with st.expander("📝 Update Success Information", expanded=False):
+            with st.form(key=f"success_tracking_form_{output_id}"):
+                st.markdown("Update grant/proposal success tracking information:")
+
+                # Status
+                current_status = output.get('status', 'draft')
+                status_options = ['draft', 'submitted', 'pending', 'awarded', 'not_awarded']
+                status_index = status_options.index(current_status) if current_status in status_options else 0
+
+                new_status = st.selectbox(
+                    "Status",
+                    options=status_options,
+                    index=status_index,
+                    format_func=lambda x: {
+                        'draft': '📄 Draft',
+                        'submitted': '📤 Submitted',
+                        'pending': '⏳ Pending',
+                        'awarded': '✅ Awarded',
+                        'not_awarded': '❌ Not Awarded'
+                    }.get(x, x),
+                    key=f"status_{output_id}"
+                )
+
+                # Funder information
+                st.markdown("**Funder Information:**")
+
+                new_funder_name = st.text_input(
+                    "Funder Name",
+                    value=output.get('funder_name', ''),
+                    key=f"funder_name_{output_id}"
+                )
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    new_requested_amount = st.number_input(
+                        "Requested Amount ($)",
+                        min_value=0.0,
+                        value=float(output.get('requested_amount') or 0.0),
+                        step=1000.0,
+                        format="%.2f",
+                        key=f"requested_amount_{output_id}"
+                    )
+
+                with col2:
+                    new_awarded_amount = st.number_input(
+                        "Awarded Amount ($)",
+                        min_value=0.0,
+                        value=float(output.get('awarded_amount') or 0.0),
+                        step=1000.0,
+                        format="%.2f",
+                        key=f"awarded_amount_{output_id}",
+                        disabled=new_status not in ['awarded']
+                    )
+
+                # Dates
+                st.markdown("**Important Dates:**")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    current_submission_date = None
+                    if output.get('submission_date'):
+                        try:
+                            current_submission_date = date_parser.parse(output.get('submission_date')).date()
+                        except:
+                            pass
+
+                    new_submission_date = st.date_input(
+                        "Submission Date",
+                        value=current_submission_date,
+                        key=f"submission_date_{output_id}"
+                    )
+
+                with col2:
+                    current_decision_date = None
+                    if output.get('decision_date'):
+                        try:
+                            current_decision_date = date_parser.parse(output.get('decision_date')).date()
+                        except:
+                            pass
+
+                    new_decision_date = st.date_input(
+                        "Decision Date",
+                        value=current_decision_date,
+                        key=f"decision_date_{output_id}",
+                        disabled=new_status not in ['awarded', 'not_awarded']
+                    )
+
+                # Success notes
+                new_success_notes = st.text_area(
+                    "Success Notes",
+                    value=output.get('success_notes', ''),
+                    height=150,
+                    help="Add notes about the outcome, what worked well, lessons learned, etc.",
+                    key=f"success_notes_{output_id}"
+                )
+
+                # Submit button
+                submitted = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+
+                if submitted:
+                    # Prepare update data
+                    update_data = {
+                        'status': new_status,
+                        'funder_name': new_funder_name if new_funder_name else None,
+                        'requested_amount': new_requested_amount if new_requested_amount > 0 else None,
+                        'awarded_amount': new_awarded_amount if new_awarded_amount > 0 and new_status == 'awarded' else None,
+                        'submission_date': new_submission_date.isoformat() if new_submission_date else None,
+                        'decision_date': new_decision_date.isoformat() if new_decision_date and new_status in ['awarded', 'not_awarded'] else None,
+                        'success_notes': new_success_notes if new_success_notes else None
+                    }
+
+                    try:
+                        with st.spinner("Updating output..."):
+                            client.update_output(output_id, update_data)
+                        st.success("✅ Success tracking information updated!")
+                        st.rerun()
+                    except ValidationError as e:
+                        st.error(f"❌ Validation error: {e.message}")
+                    except APIError as e:
+                        st.error(f"❌ Error updating output: {e.message}")
+                    except Exception as e:
+                        st.error(f"❌ Unexpected error: {str(e)}")
+                        logger.error(f"Error updating output {output_id}: {e}", exc_info=True)
+
+        st.markdown("---")
 
         # Word count
         word_count = output.get('word_count', 0)

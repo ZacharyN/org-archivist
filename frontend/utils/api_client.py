@@ -957,6 +957,54 @@ class APIClient:
             endpoint=f"/api/outputs/{output_id}"
         )
 
+    def get_analytics_summary(self) -> Dict[str, Any]:
+        """
+        Get comprehensive analytics summary.
+
+        Returns:
+            Dictionary with:
+            - overall: Overall statistics
+            - top_writing_styles: Top performing writing styles
+            - top_funders: Top funders by success rate
+            - year_over_year_trends: Year-over-year trends
+        """
+        return self._request(
+            method="GET",
+            endpoint="/api/outputs/analytics/summary"
+        )
+
+    def get_funder_performance(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get funder performance metrics.
+
+        Args:
+            limit: Maximum number of funders to return
+
+        Returns:
+            List of funder performance dictionaries
+        """
+        return self._request(
+            method="GET",
+            endpoint="/api/outputs/analytics/funders",
+            params={"limit": limit}
+        )
+
+    def get_outputs_stats(self) -> Dict[str, Any]:
+        """
+        Get outputs statistics and analytics.
+
+        Returns:
+            Dictionary with statistics including:
+            - total_outputs: Total number of outputs
+            - by_type: Breakdown by output type
+            - by_status: Breakdown by status
+            - success_metrics: Success rate and award metrics
+        """
+        return self._request(
+            method="GET",
+            endpoint="/api/outputs/stats"
+        )
+
     # ========== Configuration Management ==========
 
     def get_config(self) -> Dict[str, Any]:
