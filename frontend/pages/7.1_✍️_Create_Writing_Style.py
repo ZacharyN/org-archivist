@@ -4,7 +4,7 @@ Writing Style Sample Collection Wizard
 This page provides a multi-step wizard for creating new writing styles:
 - Step 1: Select style type (Grant, Proposal, Report)
 - Step 2: Collect 3-7 writing samples with validation
-- Step 3: AI analysis and prompt generation (future)
+- Step 3: AI analysis and prompt generation
 - Step 4: Review and finalization (future)
 """
 
@@ -201,6 +201,18 @@ def init_session_state():
         st.session_state.writing_samples = {}
     if 'num_samples' not in st.session_state:
         st.session_state.num_samples = 3  # Default to minimum
+
+    # Step 3: AI Analysis variables
+    if 'analysis_results' not in st.session_state:
+        st.session_state.analysis_results = None
+    if 'draft_prompt' not in st.session_state:
+        st.session_state.draft_prompt = None
+    if 'analysis_processing' not in st.session_state:
+        st.session_state.analysis_processing = False
+    if 'original_draft_prompt' not in st.session_state:
+        st.session_state.original_draft_prompt = None
+    if 'analysis_response' not in st.session_state:
+        st.session_state.analysis_response = None
 
 
 def count_words(text: str) -> int:
@@ -529,12 +541,258 @@ def render_step2_collect_samples():
             type="primary",
             disabled=not can_proceed
         ):
-            # Future: Move to Step 3 (AI Analysis)
-            st.info("AI Analysis step will be implemented in the next phase")
-            # st.session_state.wizard_step = 3
-            # st.rerun()
+            st.session_state.wizard_step = 3
+            st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_step3_ai_analysis():
+    """Render Step 3: AI Analysis."""
+    st.markdown("## Step 3: AI Analysis")
+    st.markdown("""
+    The AI will analyze your writing samples to identify patterns in:
+    - Vocabulary and word choice
+    - Sentence structure and complexity
+    - Thought composition and logic
+    - Paragraph organization
+    - Transitions and flow
+    - Tone and formality
+    - Perspective and voice
+    - Data integration approach
+    """)
+
+    st.markdown("---")
+
+    # Check if analysis has already been completed
+    if st.session_state.analysis_results and st.session_state.draft_prompt:
+        # Show analysis results
+        render_analysis_results()
+    elif st.session_state.analysis_processing:
+        # Show processing spinner
+        render_analysis_processing()
+    else:
+        # Show pre-analysis summary and trigger button
+        render_pre_analysis_summary()
+
+    # Navigation buttons (disabled during processing)
+    st.markdown('<div class="nav-buttons">', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 3, 1])
+
+    with col1:
+        if st.button("« Back", use_container_width=True, disabled=st.session_state.analysis_processing):
+            if st.session_state.analysis_results:
+                # Warn about losing analysis results
+                if st.session_state.get('confirm_back_step3', False):
+                    st.session_state.analysis_results = None
+                    st.session_state.draft_prompt = None
+                    st.session_state.analysis_response = None
+                    st.session_state.confirm_back_step3 = False
+                    st.session_state.wizard_step = 2
+                    st.rerun()
+                else:
+                    st.session_state.confirm_back_step3 = True
+                    st.rerun()
+            else:
+                st.session_state.wizard_step = 2
+                st.rerun()
+
+    with col3:
+        # Only allow proceeding if analysis is complete
+        can_proceed = st.session_state.analysis_results and st.session_state.draft_prompt
+        if st.button(
+            "Next: Review »",
+            use_container_width=True,
+            type="primary",
+            disabled=not can_proceed or st.session_state.analysis_processing
+        ):
+            st.session_state.wizard_step = 4
+            st.rerun()
+
+    # Show confirmation warning if trying to go back with results
+    if st.session_state.get('confirm_back_step3', False):
+        st.warning("⚠️ Going back will discard your analysis results. Click 'Back' again to confirm, or click elsewhere to cancel.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_pre_analysis_summary():
+    """Render the pre-analysis summary and trigger button."""
+    st.markdown("### Ready to Analyze")
+    st.markdown("Your writing samples are ready for AI analysis. This will take approximately 30-60 seconds.")
+
+    # Show summary of what will be analyzed
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Style Type", st.session_state.selected_style_type.title())
+    with col2:
+        st.metric("Samples", st.session_state.num_samples)
+    with col3:
+        total_words = sum(
+            count_words(st.session_state.writing_samples.get(f"sample_{i+1}", ""))
+            for i in range(st.session_state.num_samples)
+        )
+        st.metric("Total Words", f"{total_words:,}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Show sample preview in expanders
+    with st.expander("📝 Preview Samples"):
+        for i in range(st.session_state.num_samples):
+            sample_text = st.session_state.writing_samples.get(f"sample_{i+1}", "")
+            word_count = count_words(sample_text)
+            st.markdown(f"**Sample {i+1}** ({word_count} words)")
+            # Show first 200 characters
+            preview = sample_text[:200] + "..." if len(sample_text) > 200 else sample_text
+            st.caption(preview)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Analyze button
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button(
+            "🔍 Analyze Samples",
+            use_container_width=True,
+            type="primary",
+            key="trigger_analysis"
+        ):
+            st.session_state.analysis_processing = True
+            st.rerun()
+
+
+def render_analysis_processing():
+    """Render the analysis processing spinner."""
+    with st.spinner("🤖 Analyzing your writing samples... This may take 30-60 seconds"):
+        try:
+            client = get_api_client()
+
+            # Prepare samples list
+            samples_list = [
+                st.session_state.writing_samples[f"sample_{i+1}"]
+                for i in range(st.session_state.num_samples)
+            ]
+
+            # Call backend API
+            logger.info(f"Calling analyze_writing_samples with {len(samples_list)} samples")
+            response = client.analyze_writing_samples(
+                samples=samples_list,
+                style_type=st.session_state.selected_style_type
+            )
+
+            logger.info(f"Analysis response received: success={response.get('success')}")
+
+            # Check if analysis was successful
+            if not response.get('success', False):
+                errors = response.get('errors', ['Unknown error occurred'])
+                st.session_state.analysis_processing = False
+                st.error(f"❌ Analysis failed: {', '.join(errors)}")
+                if st.button("🔄 Retry Analysis"):
+                    st.rerun()
+                return
+
+            # Store results in session state
+            st.session_state.analysis_response = response
+            st.session_state.analysis_results = response.get('analysis_metadata', {})
+            st.session_state.draft_prompt = response.get('style_prompt', '')
+            st.session_state.original_draft_prompt = response.get('style_prompt', '')
+            st.session_state.analysis_processing = False
+
+            # Show success and rerun to display results
+            st.success(f"✅ Analysis Complete! Generated {response.get('word_count', 0):,} word style prompt in {response.get('generation_time', 0):.1f}s")
+            st.rerun()
+
+        except ValidationError as e:
+            st.session_state.analysis_processing = False
+            st.error(f"❌ Validation Error: {e.message}")
+            if st.button("🔄 Retry Analysis"):
+                st.rerun()
+        except APIError as e:
+            st.session_state.analysis_processing = False
+            st.error(f"❌ Analysis failed: {e.message}")
+            st.caption("Please try again. If the problem persists, contact support.")
+            if st.button("🔄 Retry Analysis"):
+                st.rerun()
+        except Exception as e:
+            logger.error(f"Unexpected error during analysis: {e}", exc_info=True)
+            st.session_state.analysis_processing = False
+            st.error("❌ An unexpected error occurred during analysis")
+            st.caption(f"Error details: {str(e)}")
+            if st.button("🔄 Retry Analysis"):
+                st.rerun()
+
+
+def render_analysis_results():
+    """Render the analysis results."""
+    response = st.session_state.analysis_response
+
+    # Show success message
+    st.success(f"✅ Analysis Complete! Generated {response.get('word_count', 0):,} word style prompt")
+
+    # Show metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Word Count", f"{response.get('word_count', 0):,}")
+    with col2:
+        st.metric("Processing Time", f"{response.get('generation_time', 0):.1f}s")
+    with col3:
+        st.metric("Tokens Used", f"{response.get('tokens_used', 0):,}")
+    with col4:
+        st.metric("Model", response.get('model', 'N/A').split('-')[-1].upper() if response.get('model') else 'N/A')
+
+    st.markdown("---")
+
+    # Show analysis metadata in expandable sections
+    st.markdown("### 📊 Analysis Details")
+
+    analysis_metadata = st.session_state.analysis_results or {}
+
+    # Create expanders for each analyzed element
+    elements = {
+        "vocabulary": "📝 Vocabulary & Word Choice",
+        "sentence_structure": "🔗 Sentence Structure",
+        "thought_composition": "💭 Thought Composition",
+        "paragraph_structure": "📄 Paragraph Structure",
+        "transitions": "↔️ Transitions & Flow",
+        "tone": "🎭 Tone & Voice",
+        "perspective": "👁️ Perspective",
+        "data_integration": "📊 Data Integration"
+    }
+
+    for key, title in elements.items():
+        if key in analysis_metadata:
+            with st.expander(title):
+                metadata = analysis_metadata[key]
+                if isinstance(metadata, dict):
+                    for k, v in metadata.items():
+                        st.write(f"**{k.replace('_', ' ').title()}:** {v}")
+                else:
+                    st.write(metadata)
+
+    # Show warnings if any
+    warnings = response.get('warnings', [])
+    if warnings:
+        st.markdown("### ⚠️ Warnings")
+        for warning in warnings:
+            st.warning(warning)
+
+    st.markdown("---")
+
+    # Show preview of draft prompt
+    st.markdown("### 📄 Generated Style Prompt Preview")
+    st.caption("This is a preview of the first 500 characters of the generated style prompt. You'll be able to review and edit the full prompt in the next step.")
+
+    draft_prompt = st.session_state.draft_prompt or ""
+    preview_text = draft_prompt[:500] + "..." if len(draft_prompt) > 500 else draft_prompt
+
+    st.text_area(
+        "Prompt preview",
+        value=preview_text,
+        height=200,
+        disabled=True,
+        label_visibility="collapsed"
+    )
 
 
 def show_wizard_page():
@@ -554,6 +812,8 @@ def show_wizard_page():
         render_step1_select_type()
     elif st.session_state.wizard_step == 2:
         render_step2_collect_samples()
+    elif st.session_state.wizard_step == 3:
+        render_step3_ai_analysis()
     else:
         st.warning(f"Step {st.session_state.wizard_step} is not yet implemented")
 
