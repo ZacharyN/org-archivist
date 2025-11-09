@@ -1,21 +1,21 @@
 # Writing Styles Wizard Development Hand-off Report
 
 **Date**: November 9, 2025
-**Status**: Steps 1-2 Complete, Ready for Steps 3-5
+**Status**: Steps 1-3 Complete, Ready for Steps 4-5
 **Feature**: Writing Styles Sample Collection and AI Analysis
 **Branch**: `feature/streamlit-frontend`
-**Last Commit**: `5714241` - "feat(frontend): add writing style sample collection wizard (Steps 1-2)"
+**Last Commit**: `4b889d1` - "feat(frontend): implement AI analysis integration for writing styles wizard (Step 3)"
 
 ---
 
 ## Executive Summary
 
-The Writing Styles wizard is a multi-step interface that allows users to create AI-powered writing styles by analyzing sample documents. Steps 1-2 (style type selection and sample collection) are complete and ready for review. Steps 3-5 (AI analysis, review, and save) are ready for implementation.
+The Writing Styles wizard is a multi-step interface that allows users to create AI-powered writing styles by analyzing sample documents. Steps 1-3 (style type selection, sample collection, and AI analysis) are complete and tested. Steps 4-5 (review/edit prompt and finalize/save) are ready for implementation.
 
 **Completion Status**:
 - ✅ **Step 1**: Style Type Selection - COMPLETE
 - ✅ **Step 2**: Sample Collection & Validation - COMPLETE
-- 🔄 **Step 3**: AI Analysis Integration - NEXT (Task: d288a2ad-8c9d-4c90-b62e-eef48ca7462f)
+- ✅ **Step 3**: AI Analysis Integration - COMPLETE (Task: d288a2ad-8c9d-4c90-b62e-eef48ca7462f)
 - 🔄 **Step 4**: Review & Edit Generated Prompt - NEXT (Task: 422a89ca-0fd7-4a2e-877a-70a36338f9e2)
 - 🔄 **Step 5**: Finalize & Save - NEXT (Task: 422a89ca-0fd7-4a2e-877a-70a36338f9e2)
 
@@ -115,6 +115,126 @@ def validate_sample(text: str, min_words: int = 200) -> tuple[bool, str]:
 
 ---
 
+### Step 3: AI Analysis Integration
+
+**Implementation Details** (Completed: 2025-11-09):
+- Three-phase UI: pre-analysis summary → processing spinner → results display
+- Backend endpoint `/api/writing-styles/analyze` called with samples and style type
+- Comprehensive error handling with retry functionality
+- Analysis results stored in session state for use in Step 4
+
+**Session State Variables**:
+```python
+# Step 3 variables added to init_session_state()
+st.session_state.analysis_results = None        # Metadata dict with 8 analysis categories
+st.session_state.draft_prompt = None            # Generated style prompt (1500-2000 words)
+st.session_state.analysis_processing = False    # True while API call in progress
+st.session_state.original_draft_prompt = None   # Original prompt for future reset feature
+st.session_state.analysis_response = None       # Full API response with metrics
+```
+
+**UI Flow**:
+
+1. **Pre-Analysis Summary** (`render_pre_analysis_summary()`):
+   - Shows metrics: Style Type, # Samples, Total Words
+   - Sample preview in expandable sections (first 200 chars each)
+   - "🔍 Analyze Samples" button triggers analysis
+
+2. **Processing** (`render_analysis_processing()`):
+   - Spinner with message: "🤖 Analyzing your writing samples... This may take 30-60 seconds"
+   - Calls `client.analyze_writing_samples(samples, style_type)` with 120s timeout
+   - On success: Stores results and reruns to show results
+   - On error: Displays error message with "🔄 Retry Analysis" button
+
+3. **Results Display** (`render_analysis_results()`):
+   - Success banner with word count
+   - Metrics: Word Count, Processing Time, Tokens Used, Model
+   - Expandable sections for 8 analysis categories:
+     - 📝 Vocabulary & Word Choice
+     - 🔗 Sentence Structure
+     - 💭 Thought Composition
+     - 📄 Paragraph Structure
+     - ↔️ Transitions & Flow
+     - 🎭 Tone & Voice
+     - 👁️ Perspective
+     - 📊 Data Integration
+   - Warnings section (if any)
+   - Draft prompt preview (first 500 characters in disabled text_area)
+
+**Navigation Logic**:
+- **Back button**:
+  - If no results: Returns to Step 2 immediately
+  - If results exist: Requires confirmation (click twice) to prevent accidental data loss
+  - Confirmation warning: "⚠️ Going back will discard your analysis results. Click 'Back' again to confirm"
+- **Next button**:
+  - Disabled during processing and until results are complete
+  - Enabled when `analysis_results` and `draft_prompt` exist
+  - Proceeds to Step 4 (Review & Edit)
+
+**Error Handling**:
+```python
+try:
+    response = client.analyze_writing_samples(samples, style_type)
+except ValidationError as e:
+    st.error(f"❌ Validation Error: {e.message}")
+    # Show retry button
+except APIError as e:
+    st.error(f"❌ Analysis failed: {e.message}")
+    st.caption("Please try again. If the problem persists, contact support.")
+    # Show retry button
+except Exception as e:
+    st.error("❌ An unexpected error occurred during analysis")
+    st.caption(f"Error details: {str(e)}")
+    # Show retry button
+```
+
+**Backend Response Structure**:
+```python
+{
+    "success": True,
+    "style_prompt": "You are writing in the style of... [1500-2000 words]",
+    "style_type": "grant",
+    "analysis_metadata": {
+        "vocabulary": {"addressed": True, "emphasis_score": 12},
+        "sentence_structure": {"addressed": True, "emphasis_score": 15},
+        "thought_composition": {"addressed": True, "emphasis_score": 8},
+        "paragraph_structure": {"addressed": True, "emphasis_score": 10},
+        "transitions": {"addressed": True, "emphasis_score": 6},
+        "tone": {"addressed": True, "emphasis_score": 14},
+        "perspective": {"addressed": True, "emphasis_score": 7},
+        "data_integration": {"addressed": True, "emphasis_score": 9}
+    },
+    "sample_stats": {
+        "sample_count": 3,
+        "total_words": 1847,
+        "avg_words_per_sample": 615.7,
+        "min_words": 203,
+        "max_words": 1012,
+        "word_counts": [203, 632, 1012]
+    },
+    "word_count": 1823,
+    "generation_time": 42.3,
+    "tokens_used": 8542,
+    "model": "claude-sonnet-4-5-20250929",
+    "warnings": []
+}
+```
+
+**Design Decisions**:
+1. **Three-phase UI**: Separates trigger, processing, and results for clear user feedback
+2. **Confirmation on back**: Prevents accidental loss of expensive API call results
+3. **Retry functionality**: All errors show retry button to recover from transient failures
+4. **Preview only**: Full prompt editing reserved for Step 4 (keeps Step 3 focused on analysis)
+5. **Disabled during processing**: All navigation disabled while API call in progress to prevent race conditions
+
+**Key Code Patterns**:
+- Uses `st.spinner()` for blocking operations with progress message
+- `st.rerun()` after state changes to update UI
+- Session state flags (`analysis_processing`) to track async operations
+- Expandable sections (`st.expander()`) for detailed metadata to avoid overwhelming UI
+
+---
+
 ### Wizard Infrastructure
 
 **Step Indicator Component**:
@@ -151,6 +271,18 @@ def init_session_state():
         st.session_state.writing_samples = {}
     if 'num_samples' not in st.session_state:
         st.session_state.num_samples = 3
+
+    # Step 3: AI Analysis variables (added 2025-11-09)
+    if 'analysis_results' not in st.session_state:
+        st.session_state.analysis_results = None
+    if 'draft_prompt' not in st.session_state:
+        st.session_state.draft_prompt = None
+    if 'analysis_processing' not in st.session_state:
+        st.session_state.analysis_processing = False
+    if 'original_draft_prompt' not in st.session_state:
+        st.session_state.original_draft_prompt = None
+    if 'analysis_response' not in st.session_state:
+        st.session_state.analysis_response = None
 ```
 
 **Design Decisions**:
@@ -254,176 +386,30 @@ Response (422 Validation Error):
 
 ## Next Steps: Implementation Guide
 
-### Step 3: AI Analysis Integration
+### ~~Step 3: AI Analysis Integration~~ ✅ COMPLETE
 
 **Task ID**: d288a2ad-8c9d-4c90-b62e-eef48ca7462f
-**File**: `frontend/pages/7.1_✍️_Create_Writing_Style.py`
-**Estimated Time**: 4-6 hours (including backend endpoint)
+**Status**: Complete (2025-11-09)
+**Commit**: `4b889d1`
 
-#### Step 3A: Backend Endpoint (Must Complete First)
-
-**Location**: `backend/app/routers/writing_styles.py`
-
-**Implementation Checklist**:
-- [ ] Create `POST /api/writing-styles/analyze` endpoint
-- [ ] Create Pydantic model `WritingStyleAnalyzeRequest`
-- [ ] Create Pydantic model `WritingStyleAnalysisResponse`
-- [ ] Implement Claude API call with analysis prompt (see prompts below)
-- [ ] Add error handling for Claude API failures
-- [ ] Add validation for samples (count, word count)
-- [ ] Test endpoint with realistic samples
-- [ ] Add to API client in frontend
-
-**Recommended Analysis Prompt Structure**:
-```python
-STYLE_ANALYSIS_PROMPT = """You are a writing style analyst. Analyze the following {num_samples} writing samples and create a detailed style guide.
-
-Writing Samples:
-{samples}
-
-Analyze and extract:
-1. Vocabulary: Word choices, complexity level, technical terms, jargon usage
-2. Sentence Structure: Average length, complexity, variety, passive vs active voice
-3. Thought Composition: How ideas are presented and developed
-4. Paragraph Structure: Length, organization, topic sentences, coherence
-5. Transitions: Connective phrases, logical connectors, flow between ideas
-6. Tone: Formality level, warmth, confidence, directness
-7. Perspective: Person (1st, 3rd), organizational voice
-8. Evidence Integration: How data and facts are incorporated
-
-Output a comprehensive style prompt (1,500-2,000 words) that instructs an AI to write in this style.
-Include:
-- Style Overview (summary)
-- Detailed Guidelines (organized by the 8 categories above)
-- Specific Examples (extracted from the samples)
-- Do's and Don'ts (based on your analysis)
-"""
-```
-
-#### Step 3B: Frontend Implementation
-
-**Function to Add**: `render_step3_ai_analysis()`
-
-**UI Components Needed**:
-1. **Pre-analysis summary**:
-   - Show selected style type
-   - Show number of samples and total word count
-   - "Analyze Samples" button to trigger analysis
-
-2. **During analysis** (30-60 seconds):
-   - Full-screen spinner with progress message
-   - Estimated time remaining (optional)
-   - "Analyzing your writing samples..." message
-   - Cannot navigate away (disable Back/Cancel buttons)
-
-3. **Analysis results display**:
-   - Success message: "✅ Analysis Complete!"
-   - Expandable sections for each analysis category:
-     ```python
-     with st.expander("📊 Vocabulary Analysis"):
-         st.write(analysis['vocabulary'])
-     with st.expander("📝 Sentence Structure"):
-         st.write(analysis['sentence_structure'])
-     # ... etc for all 8 categories
-     ```
-   - Preview of draft prompt (first 500 characters)
-   - Processing time display: "Completed in 42.3 seconds"
-
-4. **Navigation**:
-   - Back button: Returns to Step 2, warns about losing analysis
-   - Next button: Proceeds to Step 4 with draft prompt
-
-**Session State Updates**:
-```python
-# Add to init_session_state():
-if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = None
-if 'draft_prompt' not in st.session_state:
-    st.session_state.draft_prompt = None
-if 'analysis_processing' not in st.session_state:
-    st.session_state.analysis_processing = False
-```
-
-**Implementation Pattern**:
-```python
-def render_step3_ai_analysis():
-    st.markdown("## Step 3: AI Analysis")
-
-    if not st.session_state.analysis_results:
-        # Show pre-analysis UI
-        render_pre_analysis_summary()
-
-        if st.button("🔍 Analyze Samples", type="primary"):
-            st.session_state.analysis_processing = True
-            st.rerun()
-
-    if st.session_state.analysis_processing:
-        # Show spinner and call API
-        with st.spinner("Analyzing your writing samples... This may take 30-60 seconds"):
-            try:
-                client = get_api_client()
-
-                # Prepare request data
-                samples_list = [
-                    st.session_state.writing_samples[f"sample_{i+1}"]
-                    for i in range(st.session_state.num_samples)
-                ]
-
-                # Call backend endpoint
-                result = client.analyze_writing_style({
-                    "style_type": st.session_state.selected_style_type,
-                    "samples": samples_list
-                })
-
-                # Store results
-                st.session_state.analysis_results = result.get('analysis')
-                st.session_state.draft_prompt = result.get('draft_prompt')
-                st.session_state.analysis_processing = False
-                st.success("✅ Analysis Complete!")
-                st.rerun()
-
-            except APIError as e:
-                st.error(f"Analysis failed: {e.message}")
-                st.session_state.analysis_processing = False
-    else:
-        # Show analysis results
-        render_analysis_results()
-
-        # Navigation
-        col1, col2, col3 = st.columns([1, 3, 1])
-        with col1:
-            if st.button("« Back"):
-                if st.confirm("Going back will discard analysis results. Continue?"):
-                    st.session_state.analysis_results = None
-                    st.session_state.draft_prompt = None
-                    st.session_state.wizard_step = 2
-                    st.rerun()
-        with col3:
-            if st.button("Next: Review »", type="primary"):
-                st.session_state.wizard_step = 4
-                st.rerun()
-```
-
-**Error Handling**:
-```python
-try:
-    result = client.analyze_writing_style(...)
-except ValidationError as e:
-    st.error("❌ Validation Error: " + e.message)
-    st.session_state.analysis_processing = False
-except APIError as e:
-    st.error("❌ Analysis failed. Please try again.")
-    st.caption(f"Error: {e.message}")
-    st.session_state.analysis_processing = False
-except Exception as e:
-    st.error("❌ Unexpected error occurred")
-    logger.error(f"Analysis error: {e}", exc_info=True)
-    st.session_state.analysis_processing = False
-```
+See "Step 3: AI Analysis Integration" section above for implementation details.
 
 ---
 
-### Step 4: Review & Edit Generated Prompt
+### Step 4-5: Review, Edit, and Save (NEXT)
+
+**Task ID**: 422a89ca-0fd7-4a2e-877a-70a36338f9e2
+**Files**: `frontend/pages/7.1_✍️_Create_Writing_Style.py`
+**Estimated Time**: 5-7 hours total (3-4 for Step 4, 2-3 for Step 5)
+
+**Prerequisites**:
+- Step 3 complete ✅
+- `st.session_state.draft_prompt` contains generated style prompt
+- `st.session_state.analysis_results` contains metadata
+
+---
+
+### Step 4: Review & Edit Generated Prompt (NEXT)
 
 **Task ID**: 422a89ca-0fd7-4a2e-877a-70a36338f9e2 (Part 1)
 **File**: `frontend/pages/7.1_✍️_Create_Writing_Style.py`
