@@ -47,7 +47,9 @@ def _get_engine():
     global _engine, _async_session_maker
     if _engine is None:
         settings = get_settings()
-        _engine = create_async_engine(settings.database_url)
+        # Convert database URL to use async driver (asyncpg)
+        database_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
+        _engine = create_async_engine(database_url)
         _async_session_maker = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
     return _async_session_maker
 
