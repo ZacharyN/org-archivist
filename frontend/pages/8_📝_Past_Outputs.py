@@ -706,6 +706,229 @@ def show_outputs_statistics(client):
         logger.error(f"Error in outputs statistics: {e}", exc_info=True)
 
 
+def show_output_detail():
+    """Display detailed view of a selected output."""
+    output_id = st.session_state.selected_output_id
+
+    if not output_id:
+        st.error("No output selected")
+        return
+
+    client = get_api_client()
+
+    # Back button at the top
+    if st.button("⬅️ Back to Outputs List", key="back_to_list"):
+        st.session_state.selected_output_id = None
+        st.rerun()
+
+    st.markdown("---")
+
+    # Fetch full output data
+    try:
+        with st.spinner("Loading output details..."):
+            output = client.get_output(output_id)
+    except AuthenticationError:
+        st.error("❌ Authentication required. Please log in.")
+        return
+    except APIError as e:
+        st.error(f"❌ Error loading output: {e.message}")
+        return
+    except Exception as e:
+        st.error(f"❌ Unexpected error: {str(e)}")
+        logger.error(f"Error loading output {output_id}: {e}", exc_info=True)
+        return
+
+    # Create two-column layout: content on left, metadata on right
+    col_content, col_meta = st.columns([2, 1])
+
+    with col_content:
+        # Title and basic info
+        st.title(output.get('title', 'Untitled Output'))
+
+        # Output type and status badges
+        output_type = output.get('output_type', 'N/A')
+        status = output.get('status', 'draft')
+
+        badge_col1, badge_col2, badge_col3 = st.columns([1, 1, 2])
+        with badge_col1:
+            st.markdown(f"**Type:** {output_type}")
+        with badge_col2:
+            st.markdown(get_status_badge_html(status), unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # Get content for buttons
+        content = output.get('content', '')
+
+        # Action buttons
+        btn_col1, btn_col2, btn_col3 = st.columns(3)
+
+        with btn_col1:
+            # Download as .txt
+            st.download_button(
+                label="📄 Download .txt",
+                data=content,
+                file_name=f"{output.get('title', 'output').replace(' ', '_')}.txt",
+                mime="text/plain",
+                key="download_txt",
+                use_container_width=True
+            )
+
+        with btn_col2:
+            # Download as .docx (placeholder - would need python-docx)
+            st.button("📝 Download .docx", key="download_docx", disabled=True, use_container_width=True)
+
+        with btn_col3:
+            # Delete button (with confirmation)
+            if st.button("🗑️ Delete", key="delete_output", use_container_width=True):
+                st.session_state.confirm_delete = True
+
+        if st.session_state.get('confirm_delete'):
+            st.warning("⚠️ Are you sure you want to delete this output? This cannot be undone.")
+            confirm_col1, confirm_col2 = st.columns(2)
+            with confirm_col1:
+                if st.button("Yes, Delete", key="confirm_delete_yes", type="primary"):
+                    try:
+                        client.delete_output(output_id)
+                        st.success("✅ Output deleted successfully")
+                        st.session_state.selected_output_id = None
+                        st.session_state.confirm_delete = False
+                        st.rerun()
+                    except APIError as e:
+                        st.error(f"❌ Error deleting output: {e.message}")
+            with confirm_col2:
+                if st.button("Cancel", key="confirm_delete_no"):
+                    st.session_state.confirm_delete = False
+                    st.rerun()
+
+        st.markdown("---")
+
+        # Display full content with formatting
+        st.markdown("### 📄 Content")
+
+        # Create tabs for different views
+        content_tab1, content_tab2 = st.tabs(["📖 Formatted View", "📋 Raw Text (Copy-Friendly)"])
+
+        with content_tab1:
+            # Display content with formatting
+            st.markdown(
+                f"""
+                <div style="
+                    border: 1px solid #e0e0e0;
+                    border-radius: 8px;
+                    padding: 2rem;
+                    background-color: #ffffff;
+                    max-height: 600px;
+                    overflow-y: auto;
+                    line-height: 1.6;
+                    white-space: pre-wrap;
+                ">
+                {content}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with content_tab2:
+            # Display in text area for easy copying
+            st.text_area(
+                "Content",
+                value=content,
+                height=600,
+                label_visibility="collapsed",
+                key="content_text_area"
+            )
+
+    with col_meta:
+        # Metadata sidebar
+        st.markdown("### 📊 Metadata")
+
+        # Word count
+        word_count = output.get('word_count', 0)
+        st.metric("Word Count", f"{word_count:,}")
+
+        st.markdown("---")
+
+        # Dates
+        st.markdown("#### 📅 Dates")
+        created_at = format_datetime(output.get('created_at'))
+        updated_at = format_datetime(output.get('updated_at'))
+
+        st.markdown(f"**Created:** {created_at}")
+        st.markdown(f"**Updated:** {updated_at}")
+
+        if output.get('submission_date'):
+            submission_date = format_date(output.get('submission_date'))
+            st.markdown(f"**Submitted:** {submission_date}")
+
+        if output.get('decision_date'):
+            decision_date = format_date(output.get('decision_date'))
+            st.markdown(f"**Decision:** {decision_date}")
+
+        st.markdown("---")
+
+        # Writing style
+        if output.get('writing_style_id'):
+            st.markdown("#### ✍️ Writing Style")
+            st.markdown(f"Style ID: `{output.get('writing_style_id')[:8]}...`")
+
+        st.markdown("---")
+
+        # Funder information
+        if output.get('funder_name'):
+            st.markdown("#### 🏛️ Funder Information")
+            st.markdown(f"**Funder:** {output.get('funder_name')}")
+
+            if output.get('requested_amount'):
+                st.markdown(f"**Requested:** {format_currency(output.get('requested_amount'))}")
+
+            if output.get('awarded_amount') and status.lower() == 'awarded':
+                st.markdown(f"**Awarded:** {format_currency(output.get('awarded_amount'))}")
+
+        st.markdown("---")
+
+        # Status timeline
+        st.markdown("#### 📈 Status Timeline")
+
+        # Show status progression
+        statuses = ['draft', 'submitted', 'pending', 'awarded' if status.lower() == 'awarded' else 'not_awarded']
+        current_status = status.lower()
+
+        for idx, timeline_status in enumerate(statuses):
+            if timeline_status == current_status:
+                st.markdown(f"✅ **{timeline_status.replace('_', ' ').title()}** (Current)")
+                break
+            elif statuses.index(current_status) > idx:
+                st.markdown(f"✅ {timeline_status.replace('_', ' ').title()}")
+            else:
+                st.markdown(f"⭕ {timeline_status.replace('_', ' ').title()}")
+
+        st.markdown("---")
+
+        # Success notes
+        if output.get('success_notes'):
+            st.markdown("#### 📝 Notes")
+            st.text_area(
+                "Success Notes",
+                value=output.get('success_notes'),
+                height=150,
+                disabled=True,
+                label_visibility="collapsed"
+            )
+
+        # Metadata (sources, confidence, etc.)
+        if output.get('metadata'):
+            st.markdown("---")
+            st.markdown("#### 🔍 Technical Metadata")
+            with st.expander("View Metadata"):
+                st.json(output.get('metadata'))
+
+        # Created by
+        if output.get('created_by'):
+            st.markdown("---")
+            st.markdown(f"**Created by:** {output.get('created_by')}")
+
+
 def main():
     """Main entry point for the past outputs page."""
     # Require authentication
@@ -714,8 +937,12 @@ def main():
     # Initialize session state
     init_session_state()
 
-    # Show outputs list
-    show_outputs_list()
+    # Check if viewing a specific output
+    if st.session_state.selected_output_id:
+        show_output_detail()
+    else:
+        # Show outputs list
+        show_outputs_list()
 
 
 if __name__ == "__main__":
