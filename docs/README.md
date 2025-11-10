@@ -4,13 +4,21 @@ This directory contains technical documentation for the Org Archivist project, i
 
 ## Contents
 
+### Setup & Configuration Guides
+
+- **[user-management.md](user-management.md)** - Complete guide for creating and managing user accounts, including first-time setup, troubleshooting authentication issues, and security best practices
+- **[auto-migrations.md](auto-migrations.md)** - Database migration setup and troubleshooting
+- **[database-schema.md](database-schema.md)** - Database schema documentation and relationships
+
 ### Architecture Decisions & Implementation Guides
 
 - **[retrieval-engine-recency-weighting.md](retrieval-engine-recency-weighting.md)** - Comprehensive documentation of recency weighting implementation for the retrieval engine, including age-based multipliers, configuration options, testing strategy, and real-world scenarios
+- **[embedding-configuration.md](embedding-configuration.md)** - Embedding model configuration and provider setup
 
 ### Technical Issues & Solutions
 
 - **[bm25-okapi-zero-idf-issue.md](bm25-okapi-zero-idf-issue.md)** - Documents the BM25Okapi IDF calculation bug discovered during keyword search implementation and the solution (switching to BM25L)
+- **[api-endpoint-verification.md](api-endpoint-verification.md)** - API endpoint testing and validation procedures
 
 ## Purpose
 
