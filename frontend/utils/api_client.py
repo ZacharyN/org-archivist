@@ -6,6 +6,7 @@ with comprehensive JWT authentication, automatic token refresh, retry logic, and
 """
 
 import logging
+import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Callable, Iterator
 from enum import Enum
@@ -251,18 +252,18 @@ class APIClient:
 
         except requests.HTTPError as e:
             # Try to get error message from response
-            error_msg = str(e)
             detail = None
 
             try:
                 error_data = response.json()
-                detail = error_data.get("detail", error_msg)
+                detail = error_data.get("detail")
             except:
+                # If we can't parse JSON, use a generic message based on status code
                 pass
 
-            # Raise specific exception based on status code
+            # Raise specific exception based on status code with user-friendly defaults
             if response.status_code == 401:
-                raise AuthenticationError(detail or "Authentication required", response.status_code, response)
+                raise AuthenticationError(detail or "Invalid credentials", response.status_code, response)
             elif response.status_code == 403:
                 raise AuthorizationError(detail or "Permission denied", response.status_code, response)
             elif response.status_code == 404:
@@ -272,7 +273,8 @@ class APIClient:
             elif response.status_code >= 500:
                 raise ServerError(detail or "Server error", response.status_code, response)
             else:
-                raise APIError(detail or error_msg, response.status_code, response)
+                # For other errors, use the detail if available, otherwise a generic message
+                raise APIError(detail or f"Request failed with status {response.status_code}", response.status_code, response)
 
     def _request(
         self,
@@ -598,10 +600,11 @@ class APIClient:
             ValidationError: If validation fails
         """
         # Prepare multipart/form-data
+        # Backend expects metadata as a JSON string, not spread-out fields
         files = {'file': file}
         data = {
-            **metadata,
-            'sensitivity_confirmed': sensitivity_confirmed
+            'metadata': json.dumps(metadata),  # Serialize metadata to JSON string
+            'sensitivity_confirmed': str(sensitivity_confirmed).lower()  # Convert boolean to string
         }
 
         # Remove Content-Type header for multipart upload
