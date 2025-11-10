@@ -589,7 +589,7 @@ class APIClient:
         Upload a document with metadata.
 
         Args:
-            file: File object to upload
+            file: File object to upload (Streamlit UploadedFile or file-like object)
             metadata: Document metadata (type, year, programs, etc.)
             sensitivity_confirmed: User confirmed document is public
 
@@ -601,7 +601,17 @@ class APIClient:
         """
         # Prepare multipart/form-data
         # Backend expects metadata as a JSON string, not spread-out fields
-        files = {'file': file}
+
+        # Handle Streamlit UploadedFile objects
+        # Format: (filename, file_content, content_type)
+        if hasattr(file, 'name') and hasattr(file, 'type'):
+            # Streamlit UploadedFile object
+            file.seek(0)  # Reset file pointer to beginning
+            files = {'file': (file.name, file, file.type)}
+        else:
+            # Regular file-like object
+            files = {'file': file}
+
         data = {
             'metadata': json.dumps(metadata),  # Serialize metadata to JSON string
             'sensitivity_confirmed': str(sensitivity_confirmed).lower()  # Convert boolean to string
