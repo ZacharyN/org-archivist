@@ -423,8 +423,7 @@ def show_upload_section():
                 submit_button = st.form_submit_button(
                     "Upload Files",
                     use_container_width=True,
-                    type="primary",
-                    disabled=not sensitivity_confirmed
+                    type="primary"
                 )
 
             if submit_button:
