@@ -55,6 +55,16 @@ st.markdown("""
     /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+
+    /* Rename 'app' section to 'Navigation' */
+    [data-testid="stSidebarNav"] > ul > li:first-child > div[role="button"] {
+        font-size: 0;
+    }
+    [data-testid="stSidebarNav"] > ul > li:first-child > div[role="button"]::before {
+        content: "Navigation";
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -113,10 +123,10 @@ def show_login_page():
                             st.error("Invalid credentials. Please try again.")
 
                     except AuthenticationError as e:
-                        st.error(f"Authentication failed: {e.message}")
+                        st.error("❌ Invalid email or password. Please check your credentials and try again.")
                         logger.error(f"Authentication error for {email}: {e}")
                     except APIError as e:
-                        st.error(f"Login error: {e.message}")
+                        st.error("❌ Unable to connect to the server. Please try again later.")
                         logger.error(f"API error during login for {email}: {e}")
                     except Exception as e:
                         st.error(f"An unexpected error occurred: {str(e)}")
