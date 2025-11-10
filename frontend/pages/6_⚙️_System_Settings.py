@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.api_client import get_api_client, APIError, AuthenticationError
+from components.auth import require_authentication
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,9 @@ def reset_to_defaults() -> bool:
 
 def main():
     """Main application entry point."""
+    # Require authentication
+    require_authentication()
+
     init_session_state()
 
     # Header
