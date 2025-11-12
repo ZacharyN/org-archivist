@@ -335,6 +335,35 @@ class Settings(BaseSettings):
         default="./logs/app.log",
         description="Log file location"
     )
+    log_rotation_enabled: bool = Field(
+        default=True,
+        description="Enable automatic log rotation"
+    )
+    log_rotation_when: str = Field(
+        default="midnight",
+        description="When to rotate logs (midnight, H, D, W0-W6, or interval)"
+    )
+    log_rotation_interval: int = Field(
+        default=1,
+        description="Rotation interval (1 = daily for 'midnight')"
+    )
+    log_rotation_backup_count: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+        description="Number of backup log files to keep (days of retention)"
+    )
+    log_max_bytes: int = Field(
+        default=10485760,
+        ge=1048576,
+        description="Max log file size in bytes before rotation (default: 10MB)"
+    )
+    log_backup_count: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Number of backup files for size-based rotation"
+    )
     enable_metrics: bool = Field(
         default=True,
         description="Enable metrics collection"

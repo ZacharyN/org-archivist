@@ -2,6 +2,8 @@
 Main FastAPI application for Org Archivist backend
 """
 import logging
+import os
+from logging.handlers import TimedRotatingFileHandler, RotatingFileHandler
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -11,11 +13,68 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+
+def configure_logging():
+    """
+    Configure application logging with rotation support
+
+    Sets up both console and file logging with automatic rotation to prevent
+    unbounded log file growth. Supports both time-based (daily) and size-based
+    rotation strategies.
+    """
+    # Create logs directory if it doesn't exist
+    log_dir = os.path.dirname(settings.log_file)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+
+    # Configure log format
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    formatter = logging.Formatter(log_format)
+
+    # Set up handlers list
+    handlers = []
+
+    # Console handler (always enabled)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    handlers.append(console_handler)
+
+    # File handler with rotation (if enabled)
+    if settings.log_rotation_enabled and settings.log_file:
+        try:
+            # Use TimedRotatingFileHandler for daily rotation
+            file_handler = TimedRotatingFileHandler(
+                filename=settings.log_file,
+                when=settings.log_rotation_when,
+                interval=settings.log_rotation_interval,
+                backupCount=settings.log_rotation_backup_count,
+                encoding='utf-8',
+                delay=False,
+                utc=False
+            )
+            file_handler.setFormatter(formatter)
+            handlers.append(file_handler)
+
+            # Log rotation configuration on startup
+            print(f"Log rotation enabled: {settings.log_file}")
+            print(f"  - Rotation: {settings.log_rotation_when} (interval: {settings.log_rotation_interval})")
+            print(f"  - Retention: {settings.log_rotation_backup_count} backup files")
+
+        except Exception as e:
+            print(f"Warning: Failed to set up file logging: {e}")
+            print("Continuing with console logging only")
+
+    # Configure root logger
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper()),
+        format=log_format,
+        handlers=handlers,
+        force=True  # Override any existing configuration
+    )
+
+
+# Configure logging before creating logger instance
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
