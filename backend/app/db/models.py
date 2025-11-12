@@ -291,6 +291,28 @@ class UserSession(Base):
     )
 
 
+class Program(Base):
+    """Programs table - stores program definitions for dynamic program management"""
+
+    __tablename__ = "programs"
+
+    program_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String(100), nullable=False, unique=True)
+    description = Column(Text)
+    display_order = Column(Integer, nullable=False, default=0)
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"))
+
+    # Constraints
+    __table_args__ = (
+        Index("idx_programs_name", "name"),
+        Index("idx_programs_active", "active"),
+        Index("idx_programs_display_order", "display_order"),
+    )
+
+
 class WritingStyle(Base):
     """Writing Styles table - stores AI-generated writing style prompts"""
 
