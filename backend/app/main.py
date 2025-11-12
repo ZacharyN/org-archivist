@@ -9,6 +9,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import settings
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -27,7 +29,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing services...")
 
     # Run database migrations first (before any database connections)
-    from app.config import settings
     from app.utils.migrations import run_startup_migrations, MigrationError
 
     try:
@@ -86,14 +87,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS middleware
-# TODO: Load allowed origins from environment config
-ALLOWED_ORIGINS = [
-    "http://localhost:8501",  # Streamlit default
-    "http://localhost:3000",  # Development frontend
-    "http://127.0.0.1:8501",
-    "http://127.0.0.1:3000",
-]
+# Configure CORS middleware - Load allowed origins from environment config
+# Get CORS origins from settings (loaded from environment variable CORS_ORIGINS)
+# Supports comma-separated list for multiple domains
+# Default includes development ports, can be extended for production
+ALLOWED_ORIGINS = settings.get_cors_origins_list()
 
 app.add_middleware(
     CORSMiddleware,
