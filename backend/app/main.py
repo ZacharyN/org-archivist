@@ -163,6 +163,10 @@ app.add_middleware(
 # Configure custom middleware and exception handlers
 from app.middleware import configure_middleware, configure_exception_handlers
 from app.middleware.audit import AuditLoggingMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
+
+# Add rate limiting middleware (should be first to reject requests early)
+app.add_middleware(RateLimitMiddleware)
 
 # Add audit logging middleware (Phase 5)
 app.add_middleware(AuditLoggingMiddleware)

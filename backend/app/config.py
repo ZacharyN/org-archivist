@@ -305,6 +305,21 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(',')]
 
     # =============================================================================
+    # Rate Limiting Configuration
+    # =============================================================================
+
+    enable_rate_limiting: bool = Field(
+        default=True,
+        description="Enable rate limiting middleware"
+    )
+    rate_limit_cleanup_interval_hours: int = Field(
+        default=1,
+        ge=1,
+        le=24,
+        description="Hours between cleanup of stale rate limiters"
+    )
+
+    # =============================================================================
     # Cache Configuration
     # =============================================================================
 
