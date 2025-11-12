@@ -9,6 +9,8 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
+from .common import PaginationMetadata
+
 
 class OutputType(str, Enum):
     """Valid output types"""
@@ -132,13 +134,11 @@ class OutputResponse(OutputBase):
 class OutputListResponse(BaseModel):
     """
     Response model for listing outputs (GET /api/outputs)
-    Includes pagination metadata
+
+    Includes comprehensive pagination metadata to simplify frontend pagination logic.
     """
     outputs: List[OutputResponse] = Field(..., description="List of outputs")
-    total: int = Field(..., description="Total number of outputs (unfiltered)")
-    filtered: int = Field(..., description="Number of outputs after filtering")
-    page: int = Field(..., description="Current page number")
-    per_page: int = Field(..., description="Items per page")
+    pagination: PaginationMetadata = Field(..., description="Pagination metadata")
 
 
 class OutputStatsResponse(BaseModel):

@@ -24,10 +24,11 @@ from ..models.document import (
     DocumentFilters,
     DocumentStats,
 )
-from ..models.common import ErrorResponse
+from ..models.common import ErrorResponse, PaginationMetadata
 from ..dependencies import get_processor, get_database
 from ..services.document_processor import DocumentProcessor
 from ..services.database import DatabaseService
+from ..config import get_settings
 
 router = APIRouter(prefix="/api/documents", tags=["Document Management"])
 logger = logging.getLogger(__name__)
@@ -134,12 +135,13 @@ async def upload_document(
         content = await file.read()
         file_size = len(content)
 
-        # Check file size (10MB limit)
-        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-        if file_size > MAX_FILE_SIZE:
+        # Check file size against configured limit
+        settings = get_settings()
+        max_file_size = settings.max_file_size_bytes
+        if file_size > max_file_size:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File too large ({file_size} bytes). Maximum: {MAX_FILE_SIZE} bytes (10MB)"
+                detail=f"File too large ({file_size} bytes). Maximum: {max_file_size} bytes ({settings.max_file_size_mb}MB)"
             )
 
         if file_size == 0:
@@ -298,7 +300,9 @@ async def list_documents(
                 if program in doc.get("programs", [])
             ]
 
-        # Get total count
+        # Get total count from database stats
+        # NOTE: This returns total unfiltered count, not filtered count
+        # In a production system, you'd want a separate count query with filters
         stats = await db.get_stats()
         total = stats["total_documents"]
 
@@ -319,10 +323,16 @@ async def list_documents(
             for doc in documents_list
         ]
 
+        # Calculate pagination metadata
+        pagination = PaginationMetadata.calculate(
+            total=total,
+            skip=skip,
+            limit=limit
+        )
+
         return DocumentListResponse(
             documents=documents,
-            total=total,
-            filtered=len(documents),
+            pagination=pagination,
         )
 
     except Exception as e:

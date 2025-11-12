@@ -27,7 +27,7 @@ from ..models.output import (
     OutputType,
     OutputStatus,
 )
-from ..models.common import ErrorResponse
+from ..models.common import ErrorResponse, PaginationMetadata
 from ..services.database import DatabaseService
 from ..services.success_tracking import SuccessTrackingService, StatusTransitionError
 from ..api.auth import get_current_user_from_token, get_db
@@ -255,20 +255,24 @@ async def list_outputs(
                 limit=limit,
             )
 
-        # Get total count (filtered vs unfiltered)
-        # For now, we'll use length of results as filtered count
-        # In production, you'd want separate count queries
-        filtered_count = len(outputs)
+        # Get total count
+        # NOTE: In production, you'd want a separate count query with filters applied
+        # For now, using the returned count as total
+        total_count = len(outputs)
 
         # Convert to response models
         output_responses = [OutputResponse(**output) for output in outputs]
 
+        # Calculate pagination metadata
+        pagination = PaginationMetadata.calculate(
+            total=total_count,
+            skip=skip,
+            limit=limit
+        )
+
         return OutputListResponse(
             outputs=output_responses,
-            total=filtered_count,  # This should be total count query
-            filtered=filtered_count,
-            page=skip // limit + 1 if limit > 0 else 1,
-            per_page=limit,
+            pagination=pagination,
         )
 
     except Exception as e:

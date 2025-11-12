@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
+from .common import PaginationMetadata
+
 
 class DocumentMetadata(BaseModel):
     """
@@ -147,10 +149,11 @@ class DocumentInfo(BaseModel):
 class DocumentListResponse(BaseModel):
     """
     Response model for listing documents
+
+    Includes comprehensive pagination metadata to simplify frontend pagination logic.
     """
     documents: List[DocumentInfo] = Field(..., description="List of documents")
-    total: int = Field(..., description="Total document count")
-    filtered: int = Field(..., description="Filtered document count")
+    pagination: PaginationMetadata = Field(..., description="Pagination metadata")
 
 
 class DocumentFilters(BaseModel):
