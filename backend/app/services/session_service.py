@@ -18,8 +18,8 @@ from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
-from backend.app.db.models import User, UserSession
-from backend.app.config import get_settings
+from app.db.models import User, UserSession
+from app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)

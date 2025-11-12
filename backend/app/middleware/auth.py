@@ -26,9 +26,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.db.models import User, UserRole
-from backend.app.services.session_service import SessionService
-from backend.app.db.session import get_db
+from app.db.models import User, UserRole
+from app.services.session_service import SessionService
+from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
 

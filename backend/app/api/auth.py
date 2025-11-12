@@ -111,7 +111,13 @@ async def get_current_user_from_token(
 
     Requirements:
     - Email must be unique
-    - Password must be at least 8 characters
+    - Password must meet complexity requirements:
+      * Minimum 8 characters
+      * At least 1 uppercase letter (A-Z)
+      * At least 1 lowercase letter (a-z)
+      * At least 1 number (0-9)
+      * At least 1 special character (!@#$%^&* etc.)
+      * Cannot be a common/weak password
     - Role must be one of: admin, editor, writer
 
     Returns the created user profile (without password).

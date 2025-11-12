@@ -7,10 +7,12 @@ Provides secure authentication functionality including:
 - Session management
 - Login/logout logic
 - Support for three user roles: administrator, editor, writer
+- Password complexity validation
 """
 
+import re
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID
 
 from jose import JWTError, jwt
@@ -18,8 +20,8 @@ from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from backend.app.db.models import User, UserSession, UserRole
-from backend.app.config import get_settings
+from app.db.models import User, UserSession, UserRole
+from app.config import get_settings
 
 settings = get_settings()
 
@@ -35,6 +37,66 @@ class AuthService:
     """
     Authentication service for secure user authentication and session management
     """
+
+    @staticmethod
+    def validate_password_strength(password: str) -> tuple[bool, List[str]]:
+        """
+        Validate password meets complexity requirements
+
+        Requirements:
+        - Minimum 8 characters
+        - At least 1 uppercase letter
+        - At least 1 lowercase letter
+        - At least 1 number
+        - At least 1 special character
+
+        Args:
+            password: Plain text password to validate
+
+        Returns:
+            Tuple of (is_valid, list_of_errors)
+            - is_valid: True if password meets all requirements
+            - list_of_errors: List of requirement violations (empty if valid)
+        """
+        errors = []
+
+        # Check minimum length
+        if len(password) < 8:
+            errors.append("Password must be at least 8 characters long")
+
+        # Check for uppercase letter
+        if not re.search(r'[A-Z]', password):
+            errors.append("Password must contain at least one uppercase letter")
+
+        # Check for lowercase letter
+        if not re.search(r'[a-z]', password):
+            errors.append("Password must contain at least one lowercase letter")
+
+        # Check for digit
+        if not re.search(r'\d', password):
+            errors.append("Password must contain at least one number")
+
+        # Check for special character
+        if not re.search(r'[!@#$%^&*()_+\-=\[\]{};:\'",.<>?/\\|`~]', password):
+            errors.append("Password must contain at least one special character (!@#$%^&* etc.)")
+
+        # Check for common weak passwords
+        common_passwords = [
+            'password', 'password123', '12345678', 'qwerty', 'abc123',
+            'letmein', 'welcome', 'monkey', '1234567890', 'admin123'
+        ]
+        password_lower = password.lower()
+        if password_lower in common_passwords:
+            errors.append("Password is too common and easily guessable")
+
+        # Check if password contains common words as substrings
+        common_words = ['password', 'admin', 'user', 'login']
+        for word in common_words:
+            if word in password_lower:
+                errors.append(f"Password contains common word '{word}' and is easily guessable")
+                break
+
+        return (len(errors) == 0, errors)
 
     @staticmethod
     def hash_password(password: str) -> str:

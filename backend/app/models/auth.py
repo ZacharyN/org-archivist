@@ -11,18 +11,46 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class RegisterRequest(BaseModel):
     """User registration request"""
     email: EmailStr = Field(..., description="User's email address")
-    password: str = Field(..., min_length=8, description="User's password (min 8 characters)")
+    password: str = Field(
+        ...,
+        min_length=8,
+        description="User's password (min 8 characters with complexity requirements)"
+    )
     full_name: Optional[str] = Field(None, description="User's full name")
     role: str = Field(default="writer", description="User role: admin, editor, or writer")
 
-    @validator("role")
-    def validate_role(cls, v):
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        """
+        Validate password meets complexity requirements
+
+        Requirements:
+        - Minimum 8 characters
+        - At least 1 uppercase letter
+        - At least 1 lowercase letter
+        - At least 1 number
+        - At least 1 special character
+        - Not a common password
+        """
+        from ..services.auth_service import AuthService
+
+        is_valid, errors = AuthService.validate_password_strength(v)
+        if not is_valid:
+            # Join all error messages with semicolons for clear feedback
+            error_message = "; ".join(errors)
+            raise ValueError(error_message)
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
         """Validate role is one of the allowed values"""
         allowed_roles = ["admin", "editor", "writer"]
         if v not in allowed_roles:
@@ -33,7 +61,7 @@ class RegisterRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "email": "user@example.com",
-                "password": "securepassword123",
+                "password": "SecureP@ssw0rd!",
                 "full_name": "John Doe",
                 "role": "writer"
             }

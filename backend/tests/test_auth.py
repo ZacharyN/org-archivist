@@ -910,3 +910,185 @@ class TestEdgeCases:
         )
 
         assert response.status_code == 404
+
+
+class TestPasswordComplexity:
+    """Test password complexity requirements"""
+
+    @pytest.mark.asyncio
+    async def test_register_with_weak_password_too_short(self, client):
+        """Test registration fails with password less than 8 characters"""
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "Short1!",  # Only 7 characters
+                "full_name": "New User",
+                "role": "writer"
+            }
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any("at least 8 characters" in str(err) for err in detail)
+
+    @pytest.mark.asyncio
+    async def test_register_with_password_no_uppercase(self, client):
+        """Test registration fails without uppercase letter"""
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "lowercase123!",  # No uppercase
+                "full_name": "New User",
+                "role": "writer"
+            }
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any("uppercase letter" in str(err) for err in detail)
+
+    @pytest.mark.asyncio
+    async def test_register_with_password_no_lowercase(self, client):
+        """Test registration fails without lowercase letter"""
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "UPPERCASE123!",  # No lowercase
+                "full_name": "New User",
+                "role": "writer"
+            }
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any("lowercase letter" in str(err) for err in detail)
+
+    @pytest.mark.asyncio
+    async def test_register_with_password_no_number(self, client):
+        """Test registration fails without number"""
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "NoNumbers!",  # No number
+                "full_name": "New User",
+                "role": "writer"
+            }
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any("number" in str(err) for err in detail)
+
+    @pytest.mark.asyncio
+    async def test_register_with_password_no_special_char(self, client):
+        """Test registration fails without special character"""
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "NoSpecial123",  # No special character
+                "full_name": "New User",
+                "role": "writer"
+            }
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any("special character" in str(err) for err in detail)
+
+    @pytest.mark.asyncio
+    async def test_register_with_common_password(self, client):
+        """Test registration fails with common/weak password"""
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "Password123!",  # Contains common word "password"
+                "full_name": "New User",
+                "role": "writer"
+            }
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any("common" in str(err).lower() or "guessable" in str(err).lower() for err in detail)
+
+    @pytest.mark.asyncio
+    async def test_register_with_strong_password(self, client):
+        """Test registration succeeds with strong password"""
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "SecureP@ssw0rd!",  # Meets all requirements
+                "full_name": "New User",
+                "role": "writer"
+            }
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["email"] == "newuser@test.com"
+        assert data["role"] == "writer"
+        assert "user_id" in data
+
+    @pytest.mark.asyncio
+    async def test_password_validation_multiple_errors(self, client):
+        """Test that validation returns all password requirement violations"""
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "newuser@test.com",
+                "password": "weak",  # Too short, no uppercase, no number, no special char
+                "full_name": "New User",
+                "role": "writer"
+            }
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        # Should contain multiple error messages
+        error_text = str(detail).lower()
+        assert "8 characters" in error_text or "uppercase" in error_text or "number" in error_text
+
+    @pytest.mark.asyncio
+    async def test_validate_password_strength_function(self):
+        """Test the validate_password_strength function directly"""
+        # Test valid password
+        is_valid, errors = AuthService.validate_password_strength("ValidP@ss123")
+        assert is_valid is True
+        assert len(errors) == 0
+
+        # Test too short
+        is_valid, errors = AuthService.validate_password_strength("Short1!")
+        assert is_valid is False
+        assert any("8 characters" in err for err in errors)
+
+        # Test missing uppercase
+        is_valid, errors = AuthService.validate_password_strength("lowercase123!")
+        assert is_valid is False
+        assert any("uppercase" in err for err in errors)
+
+        # Test missing lowercase
+        is_valid, errors = AuthService.validate_password_strength("UPPERCASE123!")
+        assert is_valid is False
+        assert any("lowercase" in err for err in errors)
+
+        # Test missing number
+        is_valid, errors = AuthService.validate_password_strength("NoNumbers!")
+        assert is_valid is False
+        assert any("number" in err for err in errors)
+
+        # Test missing special character
+        is_valid, errors = AuthService.validate_password_strength("NoSpecial123")
+        assert is_valid is False
+        assert any("special character" in err for err in errors)
+
+        # Test common password
+        is_valid, errors = AuthService.validate_password_strength("password123")
+        assert is_valid is False
+        assert any("common" in err or "guessable" in err for err in errors)
