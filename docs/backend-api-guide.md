@@ -1857,6 +1857,7 @@ erDiagram
     users ||--o{ user_sessions : has
     users ||--o{ writing_styles : creates
     users ||--o{ outputs : creates
+    users ||--o{ programs : creates
     documents ||--o{ document_programs : has
     documents ||--o{ document_tags : has
     conversations ||--o{ messages : contains
@@ -1903,6 +1904,17 @@ erDiagram
         text sensitivity_notes
         datetime sensitivity_confirmed_at
         string sensitivity_confirmed_by
+    }
+
+    programs {
+        UUID program_id PK
+        string name UK
+        text description
+        integer display_order
+        boolean active
+        datetime created_at
+        datetime updated_at
+        UUID created_by FK
     }
 
     document_programs {
@@ -2071,6 +2083,42 @@ CREATE INDEX idx_documents_upload_date ON documents(upload_date);
 - CHECK constraints enforce valid values
 - `created_by` currently string (will be UUID FK after auth enforcement)
 - Sensitivity fields for Phase 5 data governance
+
+#### programs
+
+Stores program definitions for dynamic program management. Replaces hardcoded CHECK constraints with a flexible, database-backed system.
+
+```sql
+CREATE TABLE programs (
+    program_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID REFERENCES users(user_id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_programs_name ON programs(name);
+CREATE INDEX idx_programs_active ON programs(active);
+CREATE INDEX idx_programs_display_order ON programs(display_order);
+
+-- Trigger to auto-update updated_at
+CREATE TRIGGER trigger_update_programs_updated_at
+    BEFORE UPDATE ON programs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_programs_updated_at();
+```
+
+**Key Points:**
+- Enables dynamic program management without schema migrations
+- Programs can be created, updated, and deactivated through the application
+- `display_order` controls sorting (higher values = higher priority, 0-100 range)
+- `active` flag allows soft deletion without removing programs from database
+- Auto-updating `updated_at` timestamp via database trigger
+- Seeded with initial programs: Early Childhood (60), Youth Development (50), Family Support (40), Education (30), Health (20), General (10)
+- Future: `document_programs` table will reference this table via foreign key instead of CHECK constraint
 
 #### document_programs
 

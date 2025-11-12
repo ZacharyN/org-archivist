@@ -116,8 +116,9 @@ get_processor()            # FastAPI dependency
 # File type validation
 allowed_types = [".pdf", ".docx", ".txt"]
 
-# Size validation
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+# Size validation (using centralized configuration)
+settings = get_settings()
+max_file_size = settings.max_file_size_bytes  # Configured in config.py (default: 50MB)
 
 # Empty file check
 if file_size == 0:
