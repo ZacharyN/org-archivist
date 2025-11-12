@@ -168,7 +168,7 @@ class DatabaseService:
         for program in programs:
             await conn.execute(
                 """
-                INSERT INTO document_programs (doc_id, program_name)
+                INSERT INTO document_programs (doc_id, program)
                 VALUES ($1, $2)
                 ON CONFLICT DO NOTHING
                 """,
@@ -185,7 +185,7 @@ class DatabaseService:
         for tag in tags:
             await conn.execute(
                 """
-                INSERT INTO document_tags (doc_id, tag_name)
+                INSERT INTO document_tags (doc_id, tag)
                 VALUES ($1, $2)
                 ON CONFLICT DO NOTHING
                 """,
@@ -253,10 +253,10 @@ class DatabaseService:
     ) -> List[str]:
         """Get programs for a document"""
         rows = await conn.fetch(
-            "SELECT program_name FROM document_programs WHERE doc_id = $1",
+            "SELECT program FROM document_programs WHERE doc_id = $1",
             doc_id
         )
-        return [row["program_name"] for row in rows]
+        return [row["program"] for row in rows]
 
     async def _get_document_tags(
         self,
@@ -265,10 +265,10 @@ class DatabaseService:
     ) -> List[str]:
         """Get tags for a document"""
         rows = await conn.fetch(
-            "SELECT tag_name FROM document_tags WHERE doc_id = $1",
+            "SELECT tag FROM document_tags WHERE doc_id = $1",
             doc_id
         )
-        return [row["tag_name"] for row in rows]
+        return [row["tag"] for row in rows]
 
     async def delete_document(self, doc_id: UUID) -> bool:
         """
@@ -313,6 +313,7 @@ class DatabaseService:
         year: Optional[int] = None,
         outcome: Optional[str] = None,
         search: Optional[str] = None,
+        program: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         List documents with optional filtering
@@ -324,9 +325,14 @@ class DatabaseService:
             year: Filter by year
             outcome: Filter by outcome
             search: Search in filename (case-insensitive)
+            program: Filter by program (uses SQL JOIN)
 
         Returns:
             List of document dictionaries
+
+        Note:
+            Uses JSON aggregation to avoid N+1 queries for programs and tags.
+            When program filter is specified, uses INNER JOIN for efficient filtering.
         """
         if not self.pool:
             await self.connect()
@@ -336,35 +342,69 @@ class DatabaseService:
         params = []
         param_count = 0
 
+        # Base query with JSON aggregation for programs and tags
+        # This eliminates N+1 query problem by fetching all data in one query
+        query_base = """
+            SELECT DISTINCT
+                d.doc_id,
+                d.filename,
+                d.doc_type,
+                d.year,
+                d.outcome,
+                d.upload_date,
+                d.file_size,
+                d.chunks_count,
+                COALESCE(
+                    (SELECT json_agg(dp.program)
+                     FROM document_programs dp
+                     WHERE dp.doc_id = d.doc_id),
+                    '[]'::json
+                ) as programs,
+                COALESCE(
+                    (SELECT json_agg(dt.tag)
+                     FROM document_tags dt
+                     WHERE dt.doc_id = d.doc_id),
+                    '[]'::json
+                ) as tags
+            FROM documents d
+        """
+
+        # Add JOIN if program filter is specified
+        join_clause = ""
+        if program:
+            join_clause = "INNER JOIN document_programs dp ON d.doc_id = dp.doc_id"
+            param_count += 1
+            conditions.append(f"dp.program = ${param_count}")
+            params.append(program)
+
+        # Add other filters
         if doc_type:
             param_count += 1
-            conditions.append(f"doc_type = ${param_count}")
+            conditions.append(f"d.doc_type = ${param_count}")
             params.append(doc_type)
 
         if year:
             param_count += 1
-            conditions.append(f"year = ${param_count}")
+            conditions.append(f"d.year = ${param_count}")
             params.append(year)
 
         if outcome:
             param_count += 1
-            conditions.append(f"outcome = ${param_count}")
+            conditions.append(f"d.outcome = ${param_count}")
             params.append(outcome)
 
         if search:
             param_count += 1
-            conditions.append(f"filename ILIKE ${param_count}")
+            conditions.append(f"d.filename ILIKE ${param_count}")
             params.append(f"%{search}%")
 
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
 
         query = f"""
-            SELECT
-                doc_id, filename, doc_type, year, outcome,
-                upload_date, file_size, chunks_count
-            FROM documents
+            {query_base}
+            {join_clause}
             WHERE {where_clause}
-            ORDER BY upload_date DESC
+            ORDER BY d.upload_date DESC
             LIMIT ${param_count + 1} OFFSET ${param_count + 2}
         """
 
@@ -376,10 +416,6 @@ class DatabaseService:
 
                 documents = []
                 for row in rows:
-                    # Get programs and tags for each document
-                    programs = await self._get_document_programs(conn, row["doc_id"])
-                    tags = await self._get_document_tags(conn, row["doc_id"])
-
                     documents.append({
                         "doc_id": str(row["doc_id"]),
                         "filename": row["filename"],
@@ -389,8 +425,8 @@ class DatabaseService:
                         "upload_date": row["upload_date"].isoformat(),
                         "file_size": row["file_size"],
                         "chunks_count": row["chunks_count"],
-                        "programs": programs,
-                        "tags": tags,
+                        "programs": row["programs"] if row["programs"] else [],
+                        "tags": row["tags"] if row["tags"] else [],
                     })
 
                 return documents

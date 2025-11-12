@@ -271,7 +271,7 @@ async def list_documents(
     Args:
         doc_type: Filter by document type
         year: Filter by year
-        program: Filter by program (not implemented yet - requires join)
+        program: Filter by program (uses SQL JOIN for efficient filtering)
         outcome: Filter by outcome
         search: Search term for filename
         skip: Pagination offset
@@ -282,7 +282,7 @@ async def list_documents(
         DocumentListResponse with filtered documents
     """
     try:
-        # Get documents from database
+        # Get documents from database with all filters applied at SQL level
         documents_list = await db.list_documents(
             skip=skip,
             limit=limit,
@@ -290,15 +290,8 @@ async def list_documents(
             year=year,
             outcome=outcome,
             search=search,
+            program=program,
         )
-
-        # TODO: Implement program filtering (requires JOIN with document_programs)
-        # For now, filter in memory if program is specified
-        if program:
-            documents_list = [
-                doc for doc in documents_list
-                if program in doc.get("programs", [])
-            ]
 
         # Get total count from database stats
         # NOTE: This returns total unfiltered count, not filtered count
