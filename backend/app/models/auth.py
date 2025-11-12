@@ -54,6 +54,18 @@ class LoginRequest(BaseModel):
         }
 
 
+class RefreshRequest(BaseModel):
+    """Session refresh request"""
+    refresh_token: str = Field(..., description="JWT refresh token")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            }
+        }
+
+
 class UserResponse(BaseModel):
     """User profile response"""
     user_id: UUID = Field(..., description="User's unique identifier")

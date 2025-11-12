@@ -4,6 +4,7 @@ Authentication API endpoints
 This module provides API endpoints for user authentication and session management:
 - POST /api/auth/register - Create new user account
 - POST /api/auth/login - Authenticate and create session
+- POST /api/auth/refresh - Refresh access token using refresh token
 - POST /api/auth/logout - Invalidate session
 - GET /api/auth/session - Validate current session
 - GET /api/auth/me - Get current user details
@@ -22,6 +23,7 @@ from sqlalchemy import select
 from ..models.auth import (
     RegisterRequest,
     LoginRequest,
+    RefreshRequest,
     LoginResponse,
     LogoutResponse,
     SessionResponse,
@@ -29,6 +31,7 @@ from ..models.auth import (
 )
 from ..models.common import ErrorResponse
 from ..services.auth_service import AuthService
+from ..services.session_service import SessionService
 from ..db.models import User, UserRole
 from ..config import get_settings
 
@@ -252,6 +255,84 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Login failed"
+        )
+
+
+@router.post(
+    "/refresh",
+    response_model=LoginResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or expired refresh token"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
+    },
+    summary="Refresh session",
+    description="""
+    Refresh an expired access token using a valid refresh token.
+
+    This endpoint implements token rotation - the old session is deleted and a new one is created
+    with fresh access and refresh tokens. This ensures that refresh tokens are single-use.
+
+    Returns new access token, refresh token, and user profile on successful refresh.
+    Tokens should be included in subsequent requests using the Authorization header:
+    `Authorization: Bearer <access_token>`
+    """,
+)
+async def refresh(
+    request: RefreshRequest,
+    db: AsyncSession = Depends(get_db)
+) -> LoginResponse:
+    """
+    Refresh session using refresh token
+
+    Args:
+        request: Refresh request with refresh_token
+        db: Database session
+
+    Returns:
+        LoginResponse with new tokens and user profile
+
+    Raises:
+        HTTPException: If refresh token is invalid or expired
+    """
+    try:
+        logger.info("Session refresh attempt")
+
+        # Refresh session using SessionService
+        new_session = await SessionService.refresh_session(
+            db=db,
+            refresh_token=request.refresh_token
+        )
+
+        if not new_session:
+            logger.warning("Session refresh failed: Invalid or expired refresh token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token"
+            )
+
+        # Get user details
+        stmt = select(User).where(User.user_id == new_session.user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one()
+
+        logger.info(f"Session refreshed successfully for user: {new_session.user_id}")
+
+        return LoginResponse(
+            access_token=new_session.access_token,
+            refresh_token=new_session.refresh_token,
+            token_type="bearer",
+            expires_at=new_session.expires_at.isoformat(),
+            user=UserResponse.model_validate(user)
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Session refresh failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Session refresh failed"
         )
 
 
