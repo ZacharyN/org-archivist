@@ -55,17 +55,31 @@ st.markdown("""
     /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-
-    /* Rename 'app' section to 'Navigation' */
-    [data-testid="stSidebarNav"] > ul > li:first-child > div[role="button"] {
-        font-size: 0;
-    }
-    [data-testid="stSidebarNav"] > ul > li:first-child > div[role="button"]::before {
-        content: "Navigation";
-        font-size: 0.875rem;
-        font-weight: 600;
-    }
 </style>
+
+<script>
+    // Rename 'app' section to 'Navigation'
+    function renameAppSection() {
+        const sidebar = window.parent.document.querySelector('[data-testid="stSidebarNav"]');
+        if (sidebar) {
+            const elements = sidebar.querySelectorAll('*');
+            elements.forEach(el => {
+                if (el.textContent === 'app' && el.childNodes.length === 1 && el.childNodes[0].nodeType === 3) {
+                    el.textContent = 'Navigation';
+                }
+            });
+        }
+    }
+
+    // Run immediately and on DOM changes
+    renameAppSection();
+
+    // Use MutationObserver to catch dynamically added content
+    const observer = new MutationObserver(renameAppSection);
+    if (window.parent.document.body) {
+        observer.observe(window.parent.document.body, { childList: true, subtree: true });
+    }
+</script>
 """, unsafe_allow_html=True)
 
 
