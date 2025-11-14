@@ -2346,29 +2346,30 @@ CREATE TRIGGER trigger_update_programs_updated_at
 - `active` flag allows soft deletion without removing programs from database
 - Auto-updating `updated_at` timestamp via database trigger
 - Seeded with initial programs: Early Childhood (60), Youth Development (50), Family Support (40), Education (30), Health (20), General (10)
-- Future: `document_programs` table will reference this table via foreign key instead of CHECK constraint
+- Referenced by `document_programs` table via foreign key for referential integrity
 
 #### document_programs
 
-Junction table for document-program many-to-many relationship.
+Junction table for document-program many-to-many relationship. Uses foreign key constraint to ensure all program names exist in the `programs` table.
 
 ```sql
 CREATE TABLE document_programs (
     doc_id UUID NOT NULL REFERENCES documents(doc_id) ON DELETE CASCADE,
-    program VARCHAR(100) NOT NULL CHECK (program IN (
-        'Education', 'Health', 'Environment', 'Arts & Culture',
-        'Youth Development', 'Economic Development', 'Housing', 'Other'
-    )),
+    program VARCHAR(100) NOT NULL REFERENCES programs(name) ON DELETE RESTRICT,
     PRIMARY KEY (doc_id, program)
 );
 
 CREATE INDEX idx_doc_programs_program ON document_programs(program);
+CREATE INDEX idx_document_programs_program_fk ON document_programs(program);
 ```
 
 **Key Points:**
 - Composite primary key
 - Cascade delete when document deleted
-- Indexed on program for filtering
+- Foreign key to `programs.name` ensures referential integrity (prevents invalid program names)
+- `ON DELETE RESTRICT` prevents deletion of programs that are in use
+- Indexed on program for filtering and foreign key performance
+- Migration: `d90d97ca4bbf` (removed hardcoded CHECK constraint, added FK)
 
 #### document_tags
 

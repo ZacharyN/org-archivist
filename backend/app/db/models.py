@@ -98,18 +98,16 @@ class DocumentProgram(Base):
     __tablename__ = "document_programs"
 
     doc_id = Column(UUID(as_uuid=True), ForeignKey("documents.doc_id", ondelete="CASCADE"), primary_key=True)
-    program = Column(String(100), nullable=False, primary_key=True)
+    program = Column(String(100), ForeignKey("programs.name", ondelete="RESTRICT"), nullable=False, primary_key=True)
 
-    # Relationship
+    # Relationships
     document = relationship("Document", back_populates="programs")
+    program_ref = relationship("Program", foreign_keys=[program])
 
     # Constraints
     __table_args__ = (
-        CheckConstraint(
-            "program IN ('Early Childhood', 'Youth Development', 'Family Support', 'Education', 'Health', 'General')",
-            name="valid_program"
-        ),
         Index("idx_document_programs_program", "program"),
+        Index("idx_document_programs_program_fk", "program"),  # FK index for performance
     )
 
 
