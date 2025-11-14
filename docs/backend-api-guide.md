@@ -1521,6 +1521,64 @@ Authorization: Bearer {access_token}
 
 **Sorting:** Programs are sorted by `display_order` (descending) then by `name` (ascending).
 
+**Note:** Program statistics (`total`, `active_count`, `inactive_count`) are included in the list response. There is no separate `/stats` endpoint.
+
+#### Get Active Program Names
+
+Retrieve a simple list of active program names.
+
+```http
+GET /api/programs/active
+Authorization: Bearer {access_token}
+```
+
+**Response (200 OK):**
+```json
+[
+  "Early Childhood",
+  "Education",
+  "Family Support",
+  "Health",
+  "Youth Development"
+]
+```
+
+**Response Format:**
+- Returns a simple array of strings (program names only)
+- Sorted alphabetically for consistent display
+- Only includes active programs
+- Requires authentication (any authenticated user)
+
+**Use Cases:**
+- Frontend dropdowns and autocomplete fields
+- Document upload form program selection
+- Validation against available programs
+- Quick program name lookups without full program details
+
+**Behavior:**
+- Returns only active programs (where `active = true`)
+- Names are sorted alphabetically (case-sensitive)
+- Optimized for frontend forms and UI components
+- No pagination needed (returns all active programs)
+
+**Note:** This endpoint returns just program names for simplicity and performance. For full program details (including IDs, descriptions, display order, etc.), use `GET /api/programs`.
+
+**Example Response:**
+```json
+[
+  "Arts & Culture",
+  "Economic Development",
+  "Education",
+  "Environment",
+  "Health",
+  "Housing",
+  "Youth Development"
+]
+```
+
+**Error Responses:**
+- `500 Internal Server Error` - Database error
+
 #### Get Program
 
 Retrieve a specific program by ID.
@@ -1660,38 +1718,6 @@ Authorization: Bearer {access_token}
 - `404 Not Found` - Program doesn't exist
 - `403 Forbidden` - Insufficient permissions (requires Admin)
 - `409 Conflict` - Program in use and force=false
-
-#### Get Program Statistics
-
-Get aggregate statistics about programs and their usage.
-
-```http
-GET /api/programs/stats
-Authorization: Bearer {access_token}
-```
-
-**Response (200 OK):**
-```json
-{
-  "total_programs": 6,
-  "active_programs": 5,
-  "inactive_programs": 1,
-  "program_document_counts": {
-    "Education": 67,
-    "Youth Development": 45,
-    "Health": 38,
-    "Early Childhood": 32,
-    "Family Support": 28,
-    "Environment": 15
-  }
-}
-```
-
-**Use Cases:**
-- Dashboard statistics
-- Program usage analysis
-- Identifying underutilized programs
-- Planning program cleanup or consolidation
 
 ### 3.8 System & Admin API
 

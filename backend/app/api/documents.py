@@ -9,7 +9,7 @@ This module provides endpoints for document upload and management:
 - GET /api/documents/stats - Get library statistics
 """
 
-from typing import Optional
+from typing import Optional, List, Dict
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Query, status, Depends
 from uuid import uuid4, UUID
 from datetime import datetime
@@ -32,6 +32,64 @@ from ..config import get_settings
 
 router = APIRouter(prefix="/api/documents", tags=["Document Management"])
 logger = logging.getLogger(__name__)
+
+
+async def validate_programs_exist(
+    db: DatabaseService,
+    program_names: List[str]
+) -> List[str]:
+    """
+    Validate that all program names exist in the database and are active.
+
+    Performs case-insensitive matching and normalizes program names to their
+    canonical form (as stored in the database).
+
+    Args:
+        db: Database service instance
+        program_names: List of program names to validate
+
+    Returns:
+        List of normalized program names (canonical form from database)
+
+    Raises:
+        HTTPException: If any program is invalid or inactive
+    """
+    if not program_names:
+        return []
+
+    # Get all active programs from database
+    all_programs = await db.list_programs(active_only=True)
+
+    # Create case-insensitive lookup: lowercase -> canonical name
+    active_program_map = {p['name'].lower(): p['name'] for p in all_programs}
+
+    # Validate and normalize each provided program
+    normalized_programs = []
+    invalid_programs = []
+
+    for program in program_names:
+        program_lower = program.lower()
+        if program_lower in active_program_map:
+            # Use canonical name from database
+            normalized_programs.append(active_program_map[program_lower])
+        else:
+            invalid_programs.append(program)
+
+    # Raise error if any invalid programs found
+    if invalid_programs:
+        valid_names = sorted([p['name'] for p in all_programs])
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "Invalid programs",
+                "invalid_programs": invalid_programs,
+                "valid_programs": valid_names,
+                "message": f"The following programs are not valid or active: {', '.join(invalid_programs)}",
+                "action": "Use GET /api/programs/active to fetch valid program names"
+            }
+        )
+
+    return normalized_programs
 
 
 @router.post(
@@ -114,6 +172,13 @@ async def upload_document(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid metadata: {str(e)}"
             )
+
+        # Validate programs against database (dynamic validation with normalization)
+        if doc_metadata.programs:
+            normalized_programs = await validate_programs_exist(db, doc_metadata.programs)
+            # Update metadata with normalized program names
+            doc_metadata.programs = normalized_programs
+            logger.info(f"Validated programs: {normalized_programs}")
 
         # Validate file type
         allowed_types = [

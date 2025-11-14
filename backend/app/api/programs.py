@@ -9,7 +9,7 @@ This module provides API endpoints for managing programs (organizational categor
 - DELETE /api/programs/{program_id} - Delete a program (Admin only)
 
 Authorization:
-- List/Get programs: Public (no auth required - needed for document upload UI)
+- List/Get programs: Any authenticated user (Writer+)
 - Create program: Editor role or higher
 - Update program: Admin role only
 - Delete program: Admin role only
@@ -30,7 +30,7 @@ from ..models.program import (
 )
 from ..models.common import ErrorResponse
 from ..dependencies import get_database
-from ..middleware.auth import require_editor, require_admin
+from ..middleware.auth import get_current_active_user, require_editor, require_admin
 from ..services.database import DatabaseService
 from ..db.models import User
 
@@ -40,33 +40,85 @@ router = APIRouter(prefix="/api/programs", tags=["Program Management"])
 
 
 @router.get(
+    "/active",
+    response_model=list[str],
+    summary="Get active program names",
+    description="""
+    Get list of active program names for dropdowns/autocomplete.
+
+    Returns just the names in alphabetical order for easy frontend use.
+    Requires authentication (any authenticated user).
+    """
+)
+async def get_active_program_names(
+    db: DatabaseService = Depends(get_database),
+    current_user: User = Depends(get_current_active_user),
+) -> list[str]:
+    """
+    Get list of active program names for dropdowns/autocomplete.
+
+    This endpoint is optimized for frontend forms where you just need
+    a simple list of program names (not full program objects).
+
+    Requires any authenticated user (Writer+).
+
+    Args:
+        db: Database service dependency
+        current_user: Current authenticated user
+
+    Returns:
+        List of active program names in alphabetical order
+
+    Raises:
+        HTTPException: 401 if not authenticated
+        HTTPException: 500 if database error occurs
+    """
+    try:
+        programs = await db.list_programs(active_only=True)
+        # Return sorted list of just the names
+        program_names = sorted([p['name'] for p in programs])
+
+        logger.info(f"Retrieved {len(program_names)} active program names")
+        return program_names
+
+    except Exception as e:
+        logger.error(f"Failed to get active program names: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get active program names: {str(e)}"
+        )
+
+
+@router.get(
     "",
     response_model=ProgramListResponse,
     summary="List all programs",
-    description="Retrieve all programs with optional filtering by active status. Public endpoint."
+    description="Retrieve all programs with optional filtering by active status. Requires authentication."
 )
 async def list_programs(
     active_only: bool = Query(False, description="Only return active programs"),
     skip: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=1000, description="Max results"),
     db: DatabaseService = Depends(get_database),
+    current_user: User = Depends(get_current_active_user),
 ) -> ProgramListResponse:
     """
     List all programs with optional filtering
 
-    This is a public endpoint (no authentication required) because programs
-    are needed for the document upload UI and general browsing.
+    Requires any authenticated user (Writer+).
 
     Args:
         active_only: Filter to only active programs
         skip: Number of records to skip (pagination)
         limit: Maximum number of records to return
         db: Database service dependency
+        current_user: Current authenticated user
 
     Returns:
         ProgramListResponse with programs list and statistics
 
     Raises:
+        HTTPException: 401 if not authenticated
         HTTPException: 500 if database error occurs
     """
     try:
@@ -108,26 +160,29 @@ async def list_programs(
         404: {"model": ErrorResponse, "description": "Program not found"}
     },
     summary="Get program by ID",
-    description="Retrieve a specific program by its UUID. Public endpoint."
+    description="Retrieve a specific program by its UUID. Requires authentication."
 )
 async def get_program(
     program_id: str,
     db: DatabaseService = Depends(get_database),
+    current_user: User = Depends(get_current_active_user),
 ) -> ProgramResponse:
     """
     Get a specific program by ID
 
-    This is a public endpoint (no authentication required).
+    Requires any authenticated user (Writer+).
 
     Args:
         program_id: Program UUID string
         db: Database service dependency
+        current_user: Current authenticated user
 
     Returns:
         ProgramResponse with program details
 
     Raises:
         HTTPException: 400 if program_id is not a valid UUID
+        HTTPException: 401 if not authenticated
         HTTPException: 404 if program not found
         HTTPException: 500 if database error occurs
     """
