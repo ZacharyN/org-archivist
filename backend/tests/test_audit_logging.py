@@ -64,9 +64,11 @@ def admin_headers(admin_user):
     """Generate authentication headers for admin user"""
     auth_service = AuthService()
     token = auth_service.create_access_token(
-        user_id=admin_user.user_id,
-        email=admin_user.email,
-        role=admin_user.role.value
+        data={
+            "sub": str(admin_user.user_id),
+            "email": admin_user.email,
+            "role": admin_user.role.value
+        }
     )
     return {"Authorization": f"Bearer {token}"}
 
@@ -76,9 +78,11 @@ def writer_headers(writer_user):
     """Generate authentication headers for writer user"""
     auth_service = AuthService()
     token = auth_service.create_access_token(
-        user_id=writer_user.user_id,
-        email=writer_user.email,
-        role=writer_user.role.value
+        data={
+            "sub": str(writer_user.user_id),
+            "email": writer_user.email,
+            "role": writer_user.role.value
+        }
     )
     return {"Authorization": f"Bearer {token}"}
 
