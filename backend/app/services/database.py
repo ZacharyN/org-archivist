@@ -2159,6 +2159,360 @@ class DatabaseService:
             logger.error(f"Failed to get entity audit log for {entity_type}/{entity_id}: {e}")
             raise
 
+    # ======================
+    # Program Management Methods
+    # ======================
+
+    async def list_programs(
+        self,
+        active_only: bool = False,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        List all programs with optional filtering.
+
+        Args:
+            active_only: Only return active programs
+            skip: Pagination offset
+            limit: Max results to return
+
+        Returns:
+            List of program dictionaries with all fields
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            SELECT
+                program_id, name, description, display_order,
+                active, created_at, updated_at, created_by
+            FROM programs
+            WHERE ($1 = FALSE OR active = TRUE)
+            ORDER BY display_order DESC, name ASC
+            LIMIT $2 OFFSET $3
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                rows = await conn.fetch(query, active_only, limit, skip)
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Failed to list programs: {e}")
+            raise
+
+    async def get_program(
+        self,
+        program_id: UUID
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a single program by ID.
+
+        Args:
+            program_id: Program UUID
+
+        Returns:
+            Program dictionary or None if not found
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            SELECT
+                program_id, name, description, display_order,
+                active, created_at, updated_at, created_by
+            FROM programs
+            WHERE program_id = $1
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, program_id)
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Failed to get program {program_id}: {e}")
+            raise
+
+    async def get_program_by_name(
+        self,
+        name: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a program by name (for duplicate checking).
+
+        Args:
+            name: Program name
+
+        Returns:
+            Program dictionary or None if not found
+        """
+        if not self.pool:
+            await self.connect()
+
+        query = """
+            SELECT
+                program_id, name, description, display_order,
+                active, created_at, updated_at, created_by
+            FROM programs
+            WHERE LOWER(name) = LOWER($1)
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, name)
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Failed to get program by name '{name}': {e}")
+            raise
+
+    async def create_program(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        display_order: int = 0,
+        active: bool = True,
+        created_by: Optional[UUID] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a new program.
+
+        Args:
+            name: Program name (must be unique)
+            description: Optional description
+            display_order: Sort order (default: 0)
+            active: Whether program is active (default: True)
+            created_by: User ID who created the program
+
+        Returns:
+            Created program dictionary
+
+        Raises:
+            ValueError: If program name already exists (unique constraint violation)
+        """
+        if not self.pool:
+            await self.connect()
+
+        # Check for duplicate name first
+        existing = await self.get_program_by_name(name)
+        if existing:
+            raise ValueError(f"Program '{name}' already exists")
+
+        query = """
+            INSERT INTO programs (
+                name, description, display_order, active, created_by
+            ) VALUES ($1, $2, $3, $4, $5)
+            RETURNING program_id, name, description, display_order,
+                      active, created_at, updated_at, created_by
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    query, name, description, display_order, active, created_by
+                )
+                logger.info(f"Created program: {row['program_id']} ({name})")
+                return dict(row)
+        except Exception as e:
+            logger.error(f"Failed to create program '{name}': {e}")
+            raise
+
+    async def update_program(
+        self,
+        program_id: UUID,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        display_order: Optional[int] = None,
+        active: Optional[bool] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Update a program (partial updates supported).
+
+        Args:
+            program_id: Program UUID
+            name: New name (optional)
+            description: New description (optional)
+            display_order: New display order (optional)
+            active: New active status (optional)
+
+        Returns:
+            Updated program dictionary or None if not found
+
+        Raises:
+            ValueError: If new name conflicts with existing program
+        """
+        if not self.pool:
+            await self.connect()
+
+        # Check if new name conflicts with another program
+        if name is not None:
+            existing = await self.get_program_by_name(name)
+            if existing and existing['program_id'] != program_id:
+                raise ValueError(f"Program '{name}' already exists")
+
+        # Build dynamic UPDATE query based on provided fields
+        updates = []
+        params = []
+        param_idx = 1
+
+        if name is not None:
+            updates.append(f"name = ${param_idx}")
+            params.append(name)
+            param_idx += 1
+
+        if description is not None:
+            updates.append(f"description = ${param_idx}")
+            params.append(description)
+            param_idx += 1
+
+        if display_order is not None:
+            updates.append(f"display_order = ${param_idx}")
+            params.append(display_order)
+            param_idx += 1
+
+        if active is not None:
+            updates.append(f"active = ${param_idx}")
+            params.append(active)
+            param_idx += 1
+
+        if not updates:
+            # No fields to update
+            return await self.get_program(program_id)
+
+        # Always update updated_at timestamp
+        updates.append(f"updated_at = ${param_idx}")
+        params.append(datetime.utcnow())
+        param_idx += 1
+
+        # Add program_id as last parameter
+        params.append(program_id)
+
+        query = f"""
+            UPDATE programs
+            SET {', '.join(updates)}
+            WHERE program_id = ${param_idx}
+            RETURNING program_id, name, description, display_order,
+                      active, created_at, updated_at, created_by
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                row = await conn.fetchrow(query, *params)
+
+                if not row:
+                    logger.warning(f"Program not found for update: {program_id}")
+                    return None
+
+                logger.info(f"Updated program: {program_id}")
+                return dict(row)
+        except Exception as e:
+            logger.error(f"Failed to update program {program_id}: {e}")
+            raise
+
+    async def delete_program(
+        self,
+        program_id: UUID,
+        force: bool = False
+    ) -> tuple[bool, int]:
+        """
+        Delete a program.
+
+        Args:
+            program_id: Program UUID
+            force: If False, prevent deletion if documents use this program
+
+        Returns:
+            Tuple of (success: bool, documents_affected: int)
+
+        Raises:
+            ValueError: If program is in use and force=False
+        """
+        if not self.pool:
+            await self.connect()
+
+        try:
+            async with self.pool.acquire() as conn:
+                # Check if program is in use
+                count_query = """
+                    SELECT COUNT(*) as count
+                    FROM document_programs
+                    WHERE program = (SELECT name FROM programs WHERE program_id = $1)
+                """
+                count_row = await conn.fetchrow(count_query, program_id)
+                doc_count = count_row['count'] if count_row else 0
+
+                if doc_count > 0 and not force:
+                    raise ValueError(
+                        f"Cannot delete program: {doc_count} documents use this program. "
+                        f"Use force=True to delete anyway (documents will lose this program association)."
+                    )
+
+                # Delete program (will cascade to document_programs if foreign key exists)
+                delete_query = "DELETE FROM programs WHERE program_id = $1"
+                result = await conn.execute(delete_query, program_id)
+                deleted = result.split()[-1] == "1"
+
+                if deleted:
+                    logger.info(f"Deleted program: {program_id} ({doc_count} documents affected)")
+                else:
+                    logger.warning(f"Program not found for deletion: {program_id}")
+
+                return (deleted, doc_count)
+        except ValueError:
+            # Re-raise ValueError for "program in use" error
+            raise
+        except Exception as e:
+            logger.error(f"Failed to delete program {program_id}: {e}")
+            raise
+
+    async def get_program_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about programs.
+
+        Returns:
+            Dictionary with total programs, active/inactive counts,
+            and document counts per program
+        """
+        if not self.pool:
+            await self.connect()
+
+        try:
+            async with self.pool.acquire() as conn:
+                # Get total programs and active/inactive counts
+                stats_query = """
+                    SELECT
+                        COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE active = TRUE) as active,
+                        COUNT(*) FILTER (WHERE active = FALSE) as inactive
+                    FROM programs
+                """
+                stats_row = await conn.fetchrow(stats_query)
+
+                # Get document counts per program
+                doc_counts_query = """
+                    SELECT
+                        p.name,
+                        COUNT(dp.doc_id) as doc_count
+                    FROM programs p
+                    LEFT JOIN document_programs dp ON p.name = dp.program
+                    GROUP BY p.name
+                    ORDER BY doc_count DESC
+                """
+                doc_count_rows = await conn.fetch(doc_counts_query)
+
+                program_document_counts = {
+                    row['name']: row['doc_count'] for row in doc_count_rows
+                }
+
+                return {
+                    "total_programs": stats_row['total'] if stats_row else 0,
+                    "active_programs": stats_row['active'] if stats_row else 0,
+                    "inactive_programs": stats_row['inactive'] if stats_row else 0,
+                    "program_document_counts": program_document_counts,
+                }
+        except Exception as e:
+            logger.error(f"Failed to get program stats: {e}")
+            raise
+
 
 # Singleton instance
 _db_service: Optional[DatabaseService] = None
