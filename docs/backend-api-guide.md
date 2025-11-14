@@ -1465,7 +1465,235 @@ Authorization: Bearer {access_token}
 }
 ```
 
-### 3.7 System & Admin API
+### 3.7 Programs API
+
+**Base Path:** `/api/programs`
+
+Programs are organizational categories used to tag and filter documents (e.g., "Education", "Health", "Youth Development"). The Programs API allows management of program definitions with proper access control.
+
+#### List Programs
+
+Retrieve all programs with optional filtering.
+
+```http
+GET /api/programs?active_only={true|false}&skip={skip}&limit={limit}
+Authorization: Bearer {access_token}
+```
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `active_only` | boolean | Only return active programs (default: false) |
+| `skip` | integer | Pagination offset (default: 0) |
+| `limit` | integer | Max results to return (default: 100) |
+
+**Response (200 OK):**
+```json
+{
+  "programs": [
+    {
+      "program_id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Youth Development",
+      "description": "Programs focused on youth ages 13-18",
+      "display_order": 10,
+      "active": true,
+      "created_at": "2025-11-14T12:00:00Z",
+      "updated_at": "2025-11-14T12:00:00Z",
+      "created_by": "123e4567-e89b-12d3-a456-426614174000"
+    },
+    {
+      "program_id": "550e8400-e29b-41d4-a716-446655440001",
+      "name": "Education",
+      "description": "Educational programs and initiatives",
+      "display_order": 9,
+      "active": true,
+      "created_at": "2025-11-14T12:00:00Z",
+      "updated_at": "2025-11-14T12:00:00Z",
+      "created_by": "123e4567-e89b-12d3-a456-426614174000"
+    }
+  ],
+  "total": 6,
+  "active_count": 5,
+  "inactive_count": 1
+}
+```
+
+**Sorting:** Programs are sorted by `display_order` (descending) then by `name` (ascending).
+
+#### Get Program
+
+Retrieve a specific program by ID.
+
+```http
+GET /api/programs/{program_id}
+Authorization: Bearer {access_token}
+```
+
+**Response (200 OK):**
+```json
+{
+  "program_id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Youth Development",
+  "description": "Programs focused on youth ages 13-18",
+  "display_order": 10,
+  "active": true,
+  "created_at": "2025-11-14T12:00:00Z",
+  "updated_at": "2025-11-14T12:00:00Z",
+  "created_by": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Error Responses:**
+- `404 Not Found` - Program doesn't exist
+
+#### Create Program
+
+Create a new program (Editor+ role required).
+
+```http
+POST /api/programs
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+{
+  "name": "Early Childhood Education",
+  "description": "Programs for children ages 0-5",
+  "display_order": 8,
+  "active": true
+}
+```
+
+**Request Fields:**
+
+| Field | Type | Required | Description | Validation |
+|-------|------|----------|-------------|------------|
+| `name` | string | Yes | Program name | 1-100 chars, unique, letters/numbers/spaces/-/'& only |
+| `description` | string | No | Program description | Max 500 characters |
+| `display_order` | integer | No | Sort order (higher appears first) | 0-1000 (default: 0) |
+| `active` | boolean | No | Whether program is active | Default: true |
+
+**Response (201 Created):**
+```json
+{
+  "program_id": "550e8400-e29b-41d4-a716-446655440002",
+  "name": "Early Childhood Education",
+  "description": "Programs for children ages 0-5",
+  "display_order": 8,
+  "active": true,
+  "created_at": "2025-11-14T12:00:00Z",
+  "updated_at": "2025-11-14T12:00:00Z",
+  "created_by": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Validation errors
+- `403 Forbidden` - Insufficient permissions (requires Editor+)
+- `409 Conflict` - Program name already exists
+
+#### Update Program
+
+Update an existing program (Admin role required).
+
+```http
+PUT /api/programs/{program_id}
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+{
+  "description": "Updated description for early childhood programs",
+  "active": true,
+  "display_order": 15
+}
+```
+
+**Request Body:** All fields are optional. Only provided fields will be updated.
+
+**Response (200 OK):**
+```json
+{
+  "program_id": "550e8400-e29b-41d4-a716-446655440002",
+  "name": "Early Childhood Education",
+  "description": "Updated description for early childhood programs",
+  "display_order": 15,
+  "active": true,
+  "created_at": "2025-11-14T12:00:00Z",
+  "updated_at": "2025-11-14T14:30:00Z",
+  "created_by": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+**Error Responses:**
+- `404 Not Found` - Program doesn't exist
+- `403 Forbidden` - Insufficient permissions (requires Admin)
+- `409 Conflict` - New name conflicts with existing program
+
+#### Delete Program
+
+Delete a program (Admin role required).
+
+```http
+DELETE /api/programs/{program_id}?force={true|false}
+Authorization: Bearer {access_token}
+```
+
+**Query Parameters:**
+- `force` (boolean, default: false) - If true, delete even if documents use this program
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Program deleted successfully",
+  "program_id": "550e8400-e29b-41d4-a716-446655440002",
+  "documents_affected": 12
+}
+```
+
+**Behavior:**
+- By default, prevents deletion if documents reference the program
+- With `force=true`, deletes program and removes associations from documents
+- Returns count of affected documents
+
+**Error Responses:**
+- `404 Not Found` - Program doesn't exist
+- `403 Forbidden` - Insufficient permissions (requires Admin)
+- `409 Conflict` - Program in use and force=false
+
+#### Get Program Statistics
+
+Get aggregate statistics about programs and their usage.
+
+```http
+GET /api/programs/stats
+Authorization: Bearer {access_token}
+```
+
+**Response (200 OK):**
+```json
+{
+  "total_programs": 6,
+  "active_programs": 5,
+  "inactive_programs": 1,
+  "program_document_counts": {
+    "Education": 67,
+    "Youth Development": 45,
+    "Health": 38,
+    "Early Childhood": 32,
+    "Family Support": 28,
+    "Environment": 15
+  }
+}
+```
+
+**Use Cases:**
+- Dashboard statistics
+- Program usage analysis
+- Identifying underutilized programs
+- Planning program cleanup or consolidation
+
+### 3.8 System & Admin API
 
 #### Health Check
 
