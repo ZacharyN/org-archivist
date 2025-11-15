@@ -7,11 +7,13 @@ from logging.handlers import TimedRotatingFileHandler, RotatingFileHandler
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.api.auth import get_current_user_from_token
+from app.db.models import User, UserRole
 
 
 def configure_logging():
@@ -213,13 +215,30 @@ async def health_check() -> dict:
 
 # Metrics endpoint
 @app.get("/api/metrics", tags=["System"])
-async def get_metrics() -> dict:
+async def get_metrics(
+    current_user: User = Depends(get_current_user_from_token)
+) -> dict:
     """
-    Get application metrics
+    Get application metrics (Admin only)
+
+    Requires admin authentication to access sensitive system metrics.
+
+    Args:
+        current_user: Authenticated user (must have admin role)
 
     Returns:
         dict: Current metrics snapshot including request counts, error rates, and timing
+
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if not admin
     """
+    # Require admin role
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required to view system metrics"
+        )
+
     return metrics_middleware.get_metrics()
 
 
