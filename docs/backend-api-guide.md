@@ -363,6 +363,7 @@ Authorization: Bearer {access_token}
 | Delete writing styles | ❌ | ❌ | ✅ |
 | Create prompt templates | ❌ | ✅ | ✅ |
 | Delete prompt templates | ❌ | ❌ | ✅ |
+| View system metrics | ❌ | ❌ | ✅ |
 | View audit logs | ❌ | ❌ | ✅ |
 | Manage users | ❌ | ❌ | ✅ |
 | System configuration | ❌ | ❌ | ✅ |
@@ -1740,10 +1741,13 @@ GET /api/health
 
 #### Metrics
 
-Get application metrics (no auth required currently).
+Get application metrics (Admin only).
+
+**Security:** This endpoint requires admin authentication to prevent exposure of sensitive system metrics that could be used for attack profiling.
 
 ```http
 GET /api/metrics
+Authorization: Bearer {access_token}
 ```
 
 **Response (200 OK):**
@@ -1755,6 +1759,12 @@ GET /api/metrics
   "avg_generation_time_ms": 3240
 }
 ```
+
+**Error Responses:**
+- `401 Unauthorized` - Missing or invalid authentication token
+- `403 Forbidden` - Insufficient permissions (requires Admin role)
+
+**Note:** Metrics include sensitive information about request patterns, error rates, and performance characteristics that should only be accessible to system administrators.
 
 #### Get System Configuration
 
