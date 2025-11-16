@@ -1,8 +1,35 @@
 # Frontend Requirements & Business Logic
 
+## 🚨 IMPORTANT: Historical Document - Streamlit Era
+
+**Document Status:** HISTORICAL REFERENCE ONLY
+**Last Updated:** October 21, 2024
+**Current Implementation:** Nuxt 4 (Vue 3 + TypeScript)
+
+**Migration Notice:**
+This document contains the original frontend requirements and business logic specifications created for the **Streamlit implementation**. As of November 2025, the Org Archivist frontend has been **migrated to Nuxt 4** (Vue 3 with TypeScript).
+
+**For Current Documentation:**
+- **Nuxt 4 Setup Guide:** `/docs/nuxt4-setup.md`
+- **Nuxt 4 Implementation Risks:** `/docs/nuxt4-implementation-risks.md`
+- **Docker Deployment (Nuxt 4):** `/docs/docker-deployment.md`
+- **Updated Architecture:** `/context/architecture.md` (Section 1: Frontend Layer)
+
+**This Document's Purpose:**
+This document is preserved for:
+1. Understanding original business logic and requirements
+2. Reference for future feature implementation in Nuxt 4
+3. Historical context for database schema decisions (conflicts resolution section)
+
+Many of the features described below (Writing Styles, Past Outputs, etc.) remain valid as **business requirements** but will be implemented using Nuxt 4 components instead of Streamlit pages.
+
+---
+
 ## Document Overview
 
 This document specifies the user experience, user roles, frontend features, and business logic for the Org Archivist frontend application. This complements the technical architecture and application requirements documents with detailed frontend-specific requirements.
+
+**Note:** Originally written for Streamlit, these requirements now serve as business logic specifications for the Nuxt 4 implementation.
 
 ---
 

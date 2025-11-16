@@ -31,10 +31,10 @@ See [/context/project-context.md](/context/project-context.md) for detailed back
 
 ## Architecture
 
-Org Archivist uses a modern RAG (Retrieval-Augmented Generation) architecture:
+Org Archivist uses a modern RAG (Retrieval-Augmented Generation) architecture with Nuxt 4 frontend:
 
 ```
-User Interface (Streamlit)
+User Interface (Nuxt 4 + Vue 3)
          ↓
     Backend API (FastAPI)
          ↓
@@ -51,11 +51,11 @@ Vector DB   Claude API
 - **Quality Validator**: Confidence scoring, hallucination detection, completeness checks
 
 **Technology Stack:**
+- **Frontend**: Nuxt 4 (Vue 3, TypeScript, Nuxt UI component library)
 - **Backend**: Python, FastAPI, LlamaIndex
 - **Vector Database**: Qdrant
 - **Embeddings**: OpenAI (text-embedding-3-small recommended) or Voyage AI
 - **LLM**: Anthropic Claude (Sonnet 4.5)
-- **Frontend**: Streamlit
 - **Metadata Storage**: PostgreSQL (with Alembic migrations)
 - **Deployment**: Docker, Docker Compose
 
@@ -144,18 +144,39 @@ cd org-archivist
 cp .env.example .env
 # Edit .env with your API keys and database connection
 
-# Start services
+# Start services (production)
 docker-compose up -d
 
+# OR for development with hot reload
+docker-compose -f docker-compose.dev.yml up
+
 # Access application
-# Frontend: http://localhost:8501
+# Frontend: http://localhost:3000
 # Backend API: http://localhost:8000
 # API Docs: http://localhost:8000/docs
 ```
 
 ### Development Setup
 
-See detailed setup instructions in `/docs/setup.md` (coming soon).
+**For Development with Hot Reload:**
+
+```bash
+# Use dedicated development Dockerfiles
+docker-compose -f docker-compose.dev.yml up
+
+# Code changes will automatically reload:
+# - Frontend: Nuxt HMR (Hot Module Replacement)
+# - Backend: Uvicorn auto-reload
+```
+
+**Development Features:**
+- `frontend/Dockerfile.dev` - Optimized for Nuxt 4 development
+- `backend/Dockerfile.dev` - Optimized for FastAPI development
+- Source code mounted as volumes for instant updates
+- Debug logging enabled
+- Separate database volumes from production
+
+See `/docs/docker-deployment.md` for detailed Docker deployment instructions.
 
 ## Project Structure
 
@@ -165,16 +186,29 @@ org-archivist/
 │   ├── app/
 │   │   ├── services/     # Core business logic
 │   │   └── models/       # Data models
+│   ├── Dockerfile        # Production container
+│   ├── Dockerfile.dev    # Development container
 │   └── tests/
-├── frontend/             # Streamlit UI
-│   ├── pages/            # UI pages
-│   └── components/       # Reusable components
-├── context/              # Documentation
+├── frontend/             # Nuxt 4 Frontend (Vue 3 + TypeScript)
+│   ├── pages/            # Vue pages and routes
+│   ├── components/       # Vue components
+│   ├── composables/      # Composable functions
+│   ├── layouts/          # Page layouts
+│   ├── types/            # TypeScript type definitions
+│   ├── Dockerfile        # Production container
+│   └── Dockerfile.dev    # Development container
+├── context/              # Project documentation
 │   ├── project-context.md
 │   ├── requirements.md
-│   └── architecture.md
+│   ├── architecture.md
+│   └── frontend-requirements.md
+├── docs/                 # Technical documentation
+│   ├── nuxt4-setup.md
+│   ├── docker-deployment.md
+│   └── ...
 ├── data/                 # Document storage
-└── docker-compose.yml
+├── docker-compose.yml    # Production orchestration
+└── docker-compose.dev.yml # Development orchestration
 ```
 
 ## Key Design Decisions

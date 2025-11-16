@@ -1,16 +1,16 @@
 version: '3.8'
 
+# Development Docker Compose Configuration
+# Uses Dockerfile.dev for both frontend and backend with hot reload enabled
+# Run with: docker-compose -f docker-compose.dev.yml up
+
 services:
   # =============================================================================
-  # PostgreSQL Database
-  # =============================================================================
-  # Note: Database schema is managed by Alembic migrations, not init scripts.
-  # Migrations run automatically when the backend service starts.
-  # See docs/auto-migrations.md for details.
+  # PostgreSQL Database (same as production)
   # =============================================================================
   postgres:
     image: postgres:15-alpine
-    container_name: org-archivist-postgres
+    container_name: org-archivist-postgres-dev
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-user}
@@ -20,9 +20,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      # Init scripts removed - schema managed by Alembic migrations
-      # See backend/alembic/versions/ for migration files
+      - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-org_archivist}"]
       interval: 10s
@@ -30,17 +28,14 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - org-archivist-network
+      - org-archivist-network-dev
 
   # =============================================================================
-  # PostgreSQL Test Database
-  # =============================================================================
-  # Dedicated PostgreSQL instance for testing to mirror production environment
-  # Uses port 5433 to avoid conflicts with production database
+  # PostgreSQL Test Database (same as production)
   # =============================================================================
   postgres-test:
     image: postgres:15-alpine
-    container_name: org-archivist-postgres-test
+    container_name: org-archivist-postgres-test-dev
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_TEST_USER:-test_user}
@@ -50,9 +45,7 @@ services:
     ports:
       - "${POSTGRES_TEST_PORT:-5433}:5432"
     volumes:
-      - postgres_test_data:/var/lib/postgresql/data
-      # Test database schema managed by Alembic migrations
-      # Run migrations before tests: alembic upgrade head
+      - postgres_test_dev_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_TEST_USER:-test_user} -d ${POSTGRES_TEST_DB:-org_archivist_test}"]
       interval: 10s
@@ -60,56 +53,44 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - org-archivist-network
+      - org-archivist-network-dev
 
   # =============================================================================
-  # Qdrant Vector Database
+  # Qdrant Vector Database (same as production)
   # =============================================================================
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: org-archivist-qdrant
+    container_name: org-archivist-qdrant-dev
     restart: unless-stopped
     ports:
-      - "${QDRANT_PORT:-6333}:6333"      # HTTP API
-      - "${QDRANT_GRPC_PORT:-6334}:6334" # gRPC API
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
-      - qdrant_storage:/qdrant/storage
+      - qdrant_dev_storage:/qdrant/storage
       - ./docker/qdrant/config:/qdrant/config:ro
     environment:
-      # Qdrant configuration
       QDRANT__SERVICE__HTTP_PORT: 6333
       QDRANT__SERVICE__GRPC_PORT: 6334
-      # Optional: API key for Qdrant (if needed)
-      # QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
-    # Health check disabled - Qdrant container lacks wget/curl
-    # Qdrant is monitored via backend application health checks instead
-    # healthcheck:
-    #   test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:6333/ || exit 1"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 5
-    #   start_period: 10s
     networks:
-      - org-archivist-network
+      - org-archivist-network-dev
 
   # =============================================================================
-  # FastAPI Backend
+  # FastAPI Backend (DEVELOPMENT)
   # =============================================================================
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    container_name: org-archivist-backend
+      dockerfile: Dockerfile.dev
+    container_name: org-archivist-backend-dev
     restart: unless-stopped
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    # Docker-level log rotation to prevent unbounded container log growth
+    # Development: More verbose logging
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"      # Max 10MB per log file
-        max-file: "5"        # Keep 5 files (50MB total for container logs)
-        compress: "true"     # Compress rotated logs to save space
+        max-size: "10m"
+        max-file: "3"
     environment:
       # API Keys
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
@@ -139,19 +120,21 @@ services:
       # File Upload Configuration
       MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-10}
       ALLOWED_FILE_EXTENSIONS: ${ALLOWED_FILE_EXTENSIONS:-.pdf,.docx,.txt}
-      # Application
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-true}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Application (DEVELOPMENT SETTINGS)
+      ENVIRONMENT: development
+      DEBUG: true
+      LOG_LEVEL: DEBUG
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
-      # CORS Configuration
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8501,http://localhost:3000}
+      # CORS Configuration (development - allow both ports)
+      CORS_ORIGINS: http://localhost:8501,http://localhost:3000,http://localhost:5173
     volumes:
-      # Mount backend code for development (hot reload)
-      - ./backend/app:/app/app
-      # Mount document storage
+      # DEVELOPMENT: Mount only essential files for hot reload and migrations
+      # Excludes tests, docs, and markdown files for cleaner development environment
+      - ./backend/app:/app/app                    # Application code (hot reload)
+      - ./backend/alembic:/app/alembic            # Migration scripts
+      - ./backend/alembic.ini:/app/alembic.ini    # Alembic configuration
+      - ./backend/requirements.txt:/app/requirements.txt  # For reference
       - ./data/documents:/app/documents
-      # Mount logs directory
       - ./logs:/app/logs
     depends_on:
       postgres:
@@ -165,37 +148,35 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - org-archivist-network
+      - org-archivist-network-dev
 
   # =============================================================================
-  # Nuxt 4 Frontend
+  # Nuxt 4 Frontend (DEVELOPMENT)
   # =============================================================================
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-    container_name: org-archivist-frontend
+      dockerfile: Dockerfile.dev
+    container_name: org-archivist-frontend-dev
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-    # Docker-level log rotation
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"      # Max 10MB per log file
-        max-file: "3"        # Keep 3 files (30MB total for frontend logs)
-        compress: "true"     # Compress rotated logs
+        max-size: "10m"
+        max-file: "3"
     environment:
-      # Nuxt runtime configuration
+      # Nuxt runtime configuration (DEVELOPMENT)
       NUXT_PUBLIC_API_BASE: ${BACKEND_URL:-http://backend:8000}
-      NUXT_PUBLIC_ENVIRONMENT: ${ENVIRONMENT:-production}
-      NODE_ENV: production
+      NUXT_PUBLIC_ENVIRONMENT: development
+      NODE_ENV: development
       HOST: 0.0.0.0
       PORT: 3000
     volumes:
-      # Mount frontend code for development (hot reload)
-      # Comment out for production deployment
+      # DEVELOPMENT: Mount source code for hot reload
       - ./frontend:/app
+      # Exclude node_modules and build artifacts from sync
       - /app/node_modules
       - /app/.nuxt
       - /app/.output
@@ -209,26 +190,26 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - org-archivist-network
+      - org-archivist-network-dev
 
 # =============================================================================
 # Networks
 # =============================================================================
 networks:
-  org-archivist-network:
-    name: org-archivist-network
+  org-archivist-network-dev:
+    name: org-archivist-network-dev
     driver: bridge
 
 # =============================================================================
-# Volumes
+# Volumes (separate from production)
 # =============================================================================
 volumes:
-  postgres_data:
-    name: org-archivist-postgres-data
+  postgres_dev_data:
+    name: org-archivist-postgres-dev-data
     driver: local
-  postgres_test_data:
-    name: org-archivist-postgres-test-data
+  postgres_test_dev_data:
+    name: org-archivist-postgres-test-dev-data
     driver: local
-  qdrant_storage:
-    name: org-archivist-qdrant-storage
+  qdrant_dev_storage:
+    name: org-archivist-qdrant-dev-storage
     driver: local

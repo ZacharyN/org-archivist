@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     backend_host: str = Field(default="0.0.0.0", description="Backend host")
     backend_port: int = Field(default=8000, description="Backend port")
     frontend_host: str = Field(default="0.0.0.0", description="Frontend host")
-    frontend_port: int = Field(default=8501, description="Frontend port")
+    frontend_port: int = Field(default=3000, description="Frontend port")
     backend_url: str = Field(
         default="http://backend:8000",
         description="Backend URL for frontend"
@@ -288,7 +288,7 @@ class Settings(BaseSettings):
         description="Secret key for sessions"
     )
     cors_origins: str = Field(
-        default="http://localhost:8501,http://localhost:8000",
+        default="http://localhost:3000,http://localhost:8000,http://frontend:3000",
         description="CORS origins (comma-separated)"
     )
     enable_auth: bool = Field(

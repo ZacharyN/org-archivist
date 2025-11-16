@@ -1,0 +1,43 @@
+# Development Dockerfile for Nuxt 4 frontend
+# Optimized for hot module replacement and development workflow
+# Mirrors production Dockerfile structure but configured for development
+
+FROM node:20-alpine
+
+# Set environment variables for development
+ENV NODE_ENV=development \
+    HOST=0.0.0.0 \
+    PORT=3000
+
+# Set working directory
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache curl
+
+# Copy package files
+# These are copied to enable npm install in the container
+# Actual code will be mounted via volume for hot reload
+COPY package*.json ./
+
+# Install ALL dependencies (including dev dependencies)
+# Use npm install instead of npm ci for easier dependency updates
+RUN npm install && npm cache clean --force
+
+# Use existing node user from base image (UID 1000)
+# Change ownership to node user for security
+RUN chown -R node:node /app
+
+# Switch to non-root user
+USER node
+
+# Expose port
+EXPOSE 3000
+
+# Health check (checks dev server)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/ || exit 1
+
+# Start development server with hot reload
+# Source code is mounted via volume, so changes trigger automatic reload
+CMD ["npm", "run", "dev"]

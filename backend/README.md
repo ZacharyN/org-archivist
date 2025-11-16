@@ -240,7 +240,7 @@ EMBEDDING_MODEL=bge-large-en-v1.5  # or openai-text-embedding-3-small
 
 # Application
 LOG_LEVEL=INFO
-CORS_ORIGINS=http://localhost:8501
+CORS_ORIGINS=http://localhost:3000,http://localhost:8000,http://frontend:3000
 ```
 
 ## Troubleshooting

@@ -9,13 +9,13 @@ The Foundation Historian is a Retrieval-Augmented Generation (RAG) application d
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     User Interface Layer                    │
-│                        (Streamlit)                          │
+│                  (Nuxt 4 + Vue 3 + TypeScript)              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
 │  │   Document   │  │    Query     │  │    Chat      │       │
-│  │  Management  │  │  Assistant   │  │  Interface   │       │ 
+│  │  Management  │  │  Assistant   │  │  Interface   │       │
 │  └──────────────┘  └──────────────┘  └──────────────┘       │
 └────────────────────────────┬────────────────────────────────┘
-                             │ HTTP/WebSocket
+                             │ HTTP/REST API
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Application Layer                        │
@@ -46,96 +46,125 @@ The Foundation Historian is a Retrieval-Augmented Generation (RAG) application d
 
 ## Component Architecture
 
-### 1. Frontend Layer (Streamlit)
+### 1. Frontend Layer (Nuxt 4 + Vue 3)
 
-**Purpose:** Provide user interface for all interactions with the system.
+**Purpose:** Provide modern, responsive user interface for all interactions with the system.
 
-**Components:**
+**Technology Stack:**
+- **Framework:** Nuxt 4 (Vue 3)
+- **Language:** TypeScript
+- **UI Library:** Nuxt UI (Tailwind CSS + Radix UI components)
+- **Icons:** Nuxt Icon
+- **State Management:** Composables (future: Pinia if needed)
+- **API Client:** Built-in `$fetch` with composables
 
-#### 1.1 Document Management Interface
-**File:** `frontend/pages/document_library.py`
+**Component Architecture:**
+
+#### 1.1 Application Structure
+
+**Directory Layout:**
+```
+frontend/
+├── app.vue                 # Root application component
+├── nuxt.config.ts         # Nuxt configuration
+├── pages/                 # File-based routing
+│   └── index.vue         # Home page (dashboard)
+├── layouts/              # Layout components
+│   └── default.vue       # Default layout wrapper
+├── components/           # Reusable Vue components
+│   ├── DocumentUpload.vue
+│   ├── DocumentLibrary.vue
+│   ├── ChatInterface.vue
+│   └── QualityMetrics.vue
+├── composables/          # Composition API functions
+│   └── useApi.ts        # API client composable
+└── types/               # TypeScript definitions
+    └── api.ts           # API response types
+```
+
+#### 1.2 Document Management Interface
+**Components:** `components/DocumentUpload.vue`, `components/DocumentLibrary.vue`
 
 **Responsibilities:**
-- File upload UI with drag-and-drop
-- Metadata collection forms
-- Document library table with filtering/sorting
+- File upload with drag-and-drop (Nuxt UI FileUpload component)
+- Metadata collection forms (Nuxt UI Form components)
+- Document library table with filtering/sorting (Nuxt UI Table component)
 - Bulk operations (delete, export)
 - Statistics dashboard
 
-**Key Functions:**
-```python
-def render_upload_section()
-def render_metadata_form()
-def render_library_table(filters)
-def handle_bulk_delete(selected_docs)
-def show_library_stats()
+**Key Features:**
+```typescript
+// Composable for document management
+const useDocuments = () => {
+  const uploadDocument = async (file: File, metadata: DocumentMetadata)
+  const listDocuments = async (filters?: DocumentFilters)
+  const deleteDocument = async (docId: string)
+  const getDocumentStats = async ()
+}
 ```
 
-**State Management:**
-```python
-st.session_state.uploaded_files = []
-st.session_state.library_filters = {}
-st.session_state.selected_docs = []
-```
-
-#### 1.2 Query Assistant Interface
-**File:** `frontend/pages/query_assistant.py`
+#### 1.3 Query Assistant Interface
+**Component:** `components/QueryAssistant.vue`
 
 **Responsibilities:**
-- Project parameter configuration form
-- Template selection
-- Advanced options (retrieval params, filters)
-- Response display with formatting
-- Quality indicators display
-- Source/citation viewer
+- Project parameter configuration (Nuxt UI Form and Select components)
+- Template selection (Nuxt UI SelectMenu)
+- Advanced options panel (Nuxt UI Collapsible)
+- Response display with formatting (markdown rendering)
+- Quality indicators display (Nuxt UI Badge, Alert)
+- Source/citation viewer (Nuxt UI Card, Accordion)
 
-**Key Functions:**
-```python
-def render_project_form()
-def render_template_selector()
-def render_advanced_options()
-def display_response(response)
-def show_quality_metrics(metrics)
-def render_sources_panel(sources)
+**Key Features:**
+```typescript
+// Composable for content generation
+const useGeneration = () => {
+  const generateContent = async (query: QueryRequest)
+  const streamContent = async (query: QueryRequest)
+  const getQualityMetrics = (response: GenerationResponse)
+}
 ```
 
-#### 1.3 Chat Interface
-**File:** `frontend/pages/chat.py`
+#### 1.4 Chat Interface
+**Component:** `components/ChatInterface.vue`
 
 **Responsibilities:**
-- Conversational message flow
-- Message input with keyboard shortcuts
-- Streaming response display
-- Artifact rendering
-- Conversation history sidebar
-- Context preservation across turns
+- Conversational message flow (Vue reactive state)
+- Message input with keyboard shortcuts (Nuxt UI Textarea)
+- Streaming response display (Server-Sent Events or WebSocket)
+- Artifact rendering (Nuxt UI Card with markdown)
+- Conversation history sidebar (Nuxt UI Navigation)
+- Context preservation (composables + localStorage/sessionStorage)
 
-**Key Functions:**
-```python
-def render_chat_history()
-def handle_user_input()
-def stream_response(response_generator)
-def render_artifact(artifact)
-def save_conversation()
-def load_conversation(conversation_id)
+**Key Features:**
+```typescript
+// Composable for chat management
+const useChat = () => {
+  const messages = ref<Message[]>([])
+  const sendMessage = async (content: string)
+  const loadConversation = async (conversationId: string)
+  const saveConversation = async ()
+  const streamResponse = async (query: string)
+}
 ```
 
-#### 1.4 Settings Interface
-**File:** `frontend/pages/settings.py`
+#### 1.5 Settings Interface
+**Component:** `components/Settings.vue`
 
 **Responsibilities:**
-- Prompt template management
-- Model configuration
-- RAG parameter tuning
-- User preferences
-- System status display
+- Prompt template management (Nuxt UI Tabs, Textarea)
+- Model configuration (Nuxt UI Select, InputNumber)
+- RAG parameter tuning (Nuxt UI Slider, Toggle)
+- User preferences (Nuxt UI Form)
+- System status display (Nuxt UI Alert, Badge)
 
-**Key Functions:**
-```python
-def render_prompt_editor()
-def render_model_config()
-def render_rag_settings()
-def save_settings()
+**Key Features:**
+```typescript
+// Composable for settings management
+const useSettings = () => {
+  const saveSettings = async (settings: SystemSettings)
+  const loadSettings = async ()
+  const updatePromptTemplate = async (template: PromptTemplate)
+}
 ```
 
 ---
@@ -1819,17 +1848,23 @@ Auto-save conversation periodically
 version: '3.8'
 
 services:
-  # Frontend - Streamlit
+  # Frontend - Nuxt 4
   frontend:
     build: ./frontend
     ports:
-      - "8501:8501"
+      - "3000:3000"
     environment:
-      - BACKEND_URL=http://backend:8000
+      - NUXT_PUBLIC_API_BASE=http://backend:8000
+      - NUXT_PUBLIC_ENVIRONMENT=production
+      - NODE_ENV=production
     depends_on:
       - backend
     volumes:
+      # For development: mount source code
       - ./frontend:/app
+      - /app/node_modules
+      - /app/.nuxt
+      - /app/.output
     restart: unless-stopped
 
   # Backend - FastAPI
@@ -1899,8 +1934,8 @@ volumes:
               │                         │
         ┌─────▼──────┐          ┌──────▼─────┐
         │  Frontend  │          │   Backend  │
-        │ (Streamlit)│◄────────►│  (FastAPI) │
-        │   :8501    │          │   :8000    │
+        │  (Nuxt 4)  │◄────────►│  (FastAPI) │
+        │   :3000    │          │   :8000    │
         └────────────┘          └──────┬─────┘
                                        │
                           ┌────────────┴────────────┐
