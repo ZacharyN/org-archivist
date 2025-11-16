@@ -17,6 +17,7 @@ This directory contains technical documentation for the Org Archivist project, i
 
 ### Technical Issues & Solutions
 
+- **[async-testing-testclient-architecture-mismatch.md](async-testing-testclient-architecture-mismatch.md)** - **IMPORTANT:** Comprehensive analysis of why TestClient causes event loop errors in async tests, why this doesn't affect production, migration guide to AsyncClient, and technical debt roadmap. Essential reading before fixing failing async tests.
 - **[bm25-okapi-zero-idf-issue.md](bm25-okapi-zero-idf-issue.md)** - Documents the BM25Okapi IDF calculation bug discovered during keyword search implementation and the solution (switching to BM25L)
 - **[api-endpoint-verification.md](api-endpoint-verification.md)** - API endpoint testing and validation procedures
 

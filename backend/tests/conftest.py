@@ -34,6 +34,12 @@ os.environ["POSTGRES_USER"] = os.getenv("POSTGRES_USER", "test_user")
 os.environ["POSTGRES_PASSWORD"] = os.getenv("POSTGRES_PASSWORD", "test_password")
 os.environ["POSTGRES_DB"] = os.getenv("POSTGRES_DB", "org_archivist_test")
 
+# Set API keys for test environment (before importing app modules)
+# These are dummy values for testing and will not make actual API calls
+os.environ["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY", "test-anthropic-key-dummy-value")
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "test-openai-key-dummy-value")
+os.environ["VOYAGE_API_KEY"] = os.getenv("VOYAGE_API_KEY", "test-voyage-key-dummy-value")
+
 from app.main import app
 from app.services.retrieval_engine import RetrievalResult
 from app.dependencies import get_engine
