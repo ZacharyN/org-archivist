@@ -1,10 +1,51 @@
-# Database Schema Archive
+# Documentation Archive
 
 ## Purpose
 
-This directory contains archived database initialization scripts and schema exports from the org-archivist project's migration to pure Alembic-based database migrations.
+This directory contains:
+1. **Development Documentation** - Historical docs from completed development phases
+2. **Database Schema Archives** - Archived database initialization scripts and schema exports from the migration to pure Alembic-based database migrations
 
-## Files
+---
+
+## Development Documentation Archive
+
+These documents were valuable during specific development phases but are no longer needed for day-to-day maintenance, frontend development, or production operations. They are preserved for historical reference.
+
+### Development-Specific Guides
+- **authentication-development-strategy.md** - Authentication implementation strategy (now complete)
+- **frontend-preparation-roadmap.md** - Pre-Nuxt 4 frontend preparation planning
+- **streamlit-development-plan.md** - Original Streamlit frontend plan (replaced by Nuxt 4)
+- **streamlit-fixes-summary.md** - Streamlit fixes (no longer relevant)
+- **writing-styles-wizard-handoff.md** - Writing styles implementation handoff
+
+### Testing & Validation Reports
+- **api-endpoint-verification.md** - API endpoint verification procedures
+- **api-test-results.md** - Historical API test results
+- **test-auth-fixture-isolation-issue.md** - Auth fixture isolation debugging
+- **test-infrastructure-auth-driver-issues.md** - Test infrastructure challenges
+- **test-infrastructure-technical-debt.md** - Test infrastructure technical debt analysis
+- **test-remaining-issues.md** - Test issues snapshot
+
+### Technical Issues & Solutions
+- **async-testing-testclient-architecture-mismatch.md** - TestClient async issues analysis
+- **bm25-okapi-zero-idf-issue.md** - BM25Okapi IDF calculation bug and solution
+- **outputs-api-database-service-di-issue.md** - Database service dependency injection issue
+- **postgresql-enum-types-issue.md** - PostgreSQL enum type handling
+- **sqlalchemy-enum-configuration-issue.md** - SQLAlchemy enum configuration
+
+### Architecture & Planning
+- **MVP_STATUS_AND_REMAINING_TASKS.md** - MVP status checkpoint
+- **reranking-decision-and-roadmap.md** - Reranking implementation decision and roadmap
+- **retrieval-engine-usage.md** - Early retrieval engine documentation
+
+**Active Documentation:** For current docs, see [/docs/README.md](../README.md)
+
+---
+
+## Database Schema Archive
+
+### Files
 
 ### `01-init-database-backup-20251030.sql`
 **Date:** October 30, 2025

@@ -4,32 +4,68 @@ This directory contains technical documentation for the Org Archivist project, i
 
 ## Contents
 
-### Setup & Configuration Guides
+### Essential Documentation for Maintainability
 
-- **[user-management.md](user-management.md)** - Complete guide for creating and managing user accounts, including first-time setup, troubleshooting authentication issues, and security best practices
-- **[auto-migrations.md](auto-migrations.md)** - Database migration setup and troubleshooting
-- **[database-schema.md](database-schema.md)** - Database schema documentation and relationships
+This documentation is actively maintained and essential for understanding, maintaining, and extending the Org Archivist application.
 
-### Architecture Decisions & Implementation Guides
+### Getting Started & Deployment
 
-- **[retrieval-engine-recency-weighting.md](retrieval-engine-recency-weighting.md)** - Comprehensive documentation of recency weighting implementation for the retrieval engine, including age-based multipliers, configuration options, testing strategy, and real-world scenarios
+- **[docker-deployment.md](docker-deployment.md)** - Docker deployment guide for production and development environments
+- **[user-management.md](user-management.md)** - User account creation and management guide
+- **[auto-migrations.md](auto-migrations.md)** - Database migration setup and workflow
+- **[database-schema.md](database-schema.md)** - Complete database schema documentation
+
+### Frontend Development (Nuxt 4)
+
+**Start here:** **[frontend-quick-start.md](frontend-quick-start.md)** - Quick start guide for frontend developers
+
+**Essential documentation:**
+- **[nuxt4-setup.md](nuxt4-setup.md)** - Nuxt 4 framework setup and configuration
+- **[nuxt4-implementation-risks.md](nuxt4-implementation-risks.md)** - Important risks and considerations for Nuxt 4 development
+- **[backend-api-guide.md](backend-api-guide.md)** - Complete backend API reference for frontend integration
+
+See also: **[/context/frontend-requirements.md](../context/frontend-requirements.md)** for detailed frontend specifications.
+
+### Backend Architecture & Configuration
+
+- **[retrieval-engine-recency-weighting.md](retrieval-engine-recency-weighting.md)** - Recency weighting implementation for the retrieval engine
 - **[embedding-configuration.md](embedding-configuration.md)** - Embedding model configuration and provider setup
+- **[rate-limiting.md](rate-limiting.md)** - API rate limiting configuration
+- **[log-management.md](log-management.md)** - Logging configuration and best practices
+- **[security-improvements.md](security-improvements.md)** - Security hardening and best practices
 
-### Technical Issues & Solutions
+## Documentation Organization
 
-- **[async-testing-testclient-architecture-mismatch.md](async-testing-testclient-architecture-mismatch.md)** - **IMPORTANT:** Comprehensive analysis of why TestClient causes event loop errors in async tests, why this doesn't affect production, migration guide to AsyncClient, and technical debt roadmap. Essential reading before fixing failing async tests.
-- **[bm25-okapi-zero-idf-issue.md](bm25-okapi-zero-idf-issue.md)** - Documents the BM25Okapi IDF calculation bug discovered during keyword search implementation and the solution (switching to BM25L)
-- **[api-endpoint-verification.md](api-endpoint-verification.md)** - API endpoint testing and validation procedures
+### Active Documentation (This Directory)
+Essential, actively maintained documentation for:
+- Production deployment and operations
+- Frontend development (Nuxt 4)
+- Backend architecture and configuration
+- Database management
+
+### Archived Documentation
+Historical documentation from completed development phases is in **[archive/](archive/README.md)**:
+- Development-specific guides (authentication strategy, Streamlit migration)
+- Testing and validation reports
+- Technical issue investigations
+- Architecture decisions (now superseded)
+
+### Project Context
+Core project specifications in **[/context/](../context/)**:
+- **[project-context.md](../context/project-context.md)** - Problem statement and use cases
+- **[requirements.md](../context/requirements.md)** - Functional and non-functional requirements
+- **[architecture.md](../context/architecture.md)** - System architecture and design
+- **[frontend-requirements.md](../context/frontend-requirements.md)** - Frontend specifications
 
 ## Purpose
 
-This documentation serves multiple purposes:
+This documentation serves:
 
-1. **Knowledge Preservation** - Capture important technical decisions and their rationale
-2. **Troubleshooting** - Document issues and solutions for future reference
-3. **Onboarding** - Help new team members understand why certain choices were made
-4. **Maintenance** - Provide context for library upgrades and refactoring
-5. **Learning** - Share lessons learned during development
+1. **Onboarding** - Get new team members productive quickly
+2. **Frontend Development** - Enable Nuxt 4 frontend implementation
+3. **Operations** - Deploy and maintain the application in production
+4. **Architecture** - Understand system design and technical decisions
+5. **Troubleshooting** - Resolve issues using established patterns
 
 ## Documentation Standards
 
