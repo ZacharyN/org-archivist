@@ -32,6 +32,11 @@
 <script setup lang="ts">
 import type { HealthCheckResponse } from '~/types/api'
 
+// Protect this route - require authentication
+definePageMeta({
+  middleware: 'auth'
+})
+
 const healthStatus = ref<{ok: boolean, message: string} | null>(null)
 
 const testBackend = async () => {
