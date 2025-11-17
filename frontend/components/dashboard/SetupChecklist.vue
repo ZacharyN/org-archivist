@@ -161,7 +161,7 @@
         </div>
         <UProgress
           :value="completionPercentage"
-          :color="completionPercentage === 100 ? 'green' : 'primary'"
+          :color="completionPercentage === 100 ? 'success' : 'primary'"
           size="sm"
         />
         <p v-if="completionPercentage === 100" class="text-xs text-green-600 dark:text-green-400 mt-2 flex items-center gap-1">
