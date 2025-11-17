@@ -1,8 +1,10 @@
 <template>
   <header class="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
     <div class="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
-      <!-- Left Section: Logo & Breadcrumbs -->
+      <!-- Left Section: Mobile Menu Toggle + Logo & Breadcrumbs -->
       <div class="flex items-center space-x-4 flex-1 min-w-0">
+        <!-- Mobile Menu Button Slot -->
+        <slot name="mobile-menu" />
         <!-- Organization Logo -->
         <NuxtLink to="/" class="flex-shrink-0 flex items-center space-x-2">
           <div class="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
