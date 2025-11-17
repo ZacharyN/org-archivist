@@ -365,6 +365,19 @@ export interface ChatResponse {
   metadata?: GenerationMetadata
 }
 
+/**
+ * Conversation (full chat session)
+ */
+export interface Conversation {
+  conversation_id: string
+  user_id: string
+  name?: string
+  messages: ChatMessage[]
+  context?: ConversationContext
+  created_at: string
+  updated_at: string
+}
+
 // ============================================================================
 // Writing Style Types
 // ============================================================================
