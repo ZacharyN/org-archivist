@@ -1,27 +1,38 @@
 # Frontend Requirements & Business Logic
 
-## 🚨 IMPORTANT: Historical Document - Streamlit Era
+## 📘 CURRENT: Nuxt 4 Implementation Specification
 
-**Document Status:** HISTORICAL REFERENCE ONLY
-**Last Updated:** October 21, 2024
-**Current Implementation:** Nuxt 4 (Vue 3 + TypeScript)
+**Document Status:** CURRENT - NUXT 4 REQUIREMENTS
+**Last Updated:** November 16, 2025
+**Implementation:** Nuxt 4 (Vue 3 + TypeScript + Nuxt UI)
 
-**Migration Notice:**
-This document contains the original frontend requirements and business logic specifications created for the **Streamlit implementation**. As of November 2025, the Org Archivist frontend has been **migrated to Nuxt 4** (Vue 3 with TypeScript).
+**Migration Status:**
+This document has been **updated for Nuxt 4** frontend implementation. The Org Archivist has migrated from Streamlit to a modern Vue 3/Nuxt 4 application with full TypeScript support.
 
-**For Current Documentation:**
+**Key Technologies:**
+- **Framework:** Nuxt 4 (Vue 3 composition API)
+- **Language:** TypeScript (strict mode)
+- **UI Library:** Nuxt UI (built on Tailwind CSS)
+- **Icons:** Nuxt Icon
+- **Authentication:** JWT-based with session management
+- **Streaming:** Server-Sent Events (SSE) for real-time responses
+- **State Management:** Vue Composition API (Pinia for complex state)
+
+**Related Documentation:**
 - **Nuxt 4 Setup Guide:** `/docs/nuxt4-setup.md`
 - **Nuxt 4 Implementation Risks:** `/docs/nuxt4-implementation-risks.md`
-- **Docker Deployment (Nuxt 4):** `/docs/docker-deployment.md`
-- **Updated Architecture:** `/context/architecture.md` (Section 1: Frontend Layer)
+- **Backend API Guide:** `/docs/backend-api-guide.md`
+- **Architecture:** `/context/architecture.md` (Section 1: Frontend Layer)
+- **Security Improvements:** `/docs/security-improvements.md`
 
-**This Document's Purpose:**
-This document is preserved for:
-1. Understanding original business logic and requirements
-2. Reference for future feature implementation in Nuxt 4
-3. Historical context for database schema decisions (conflicts resolution section)
-
-Many of the features described below (Writing Styles, Past Outputs, etc.) remain valid as **business requirements** but will be implemented using Nuxt 4 components instead of Streamlit pages.
+**What's New in Nuxt 4 Implementation:**
+1. ✅ JWT-based authentication with refresh tokens
+2. ✅ Server-Sent Events (SSE) streaming for AI responses
+3. ✅ Dynamic Programs API for managing organizational categories
+4. ✅ Enhanced security (admin-only metrics endpoint)
+5. ✅ TypeScript throughout for type safety
+6. ✅ Modern Vue 3 components with Nuxt UI
+7. ✅ Docker containerization with hot module replacement
 
 ---
 
@@ -29,7 +40,100 @@ Many of the features described below (Writing Styles, Past Outputs, etc.) remain
 
 This document specifies the user experience, user roles, frontend features, and business logic for the Org Archivist frontend application. This complements the technical architecture and application requirements documents with detailed frontend-specific requirements.
 
-**Note:** Originally written for Streamlit, these requirements now serve as business logic specifications for the Nuxt 4 implementation.
+**Implementation Status:**
+- **Original Target:** Streamlit (MVP prototype)
+- **Current Target:** Nuxt 4 (Vue 3 + TypeScript production application)
+- **Business Logic:** Preserved and enhanced from original requirements
+- **UI Components:** Updated from Streamlit to Vue 3/Nuxt UI components
+- **Authentication:** Upgraded from basic auth to JWT-based system
+- **Real-time:** Added SSE streaming for AI responses
+
+---
+
+## Nuxt 4 Implementation Overview
+
+### Technology Stack
+
+**Frontend Framework:**
+- **Nuxt 4**: Latest Vue 3 meta-framework with SSR/SSG capabilities
+- **Vue 3**: Composition API for reactive components
+- **TypeScript**: Strict type checking throughout application
+- **Nuxt UI**: Official Nuxt UI component library (built on Tailwind CSS)
+- **Nuxt Icon**: Icon library with 200,000+ icons
+
+**Authentication & Security:**
+- **JWT Tokens**: Access tokens (5 hours) and refresh tokens (7 days)
+- **Session Management**: Database-backed session tracking
+- **Role-Based Access Control (RBAC)**: Three roles (Admin, Editor, Writer)
+- **Secure Headers**: Authorization: Bearer {token}
+- **Protected Routes**: Automatic route guards for authenticated pages
+
+**Real-Time Communication:**
+- **Server-Sent Events (SSE)**: Streaming AI responses
+- **EventSource API**: Client-side SSE handling
+- **ReadableStream**: Alternative streaming implementation
+- **Fetch API**: Standard HTTP requests with streaming support
+
+**API Integration:**
+- **Fetch API**: Native browser API for HTTP requests
+- **Composables**: Reusable `useApi()`, `useAuth()`, `useStreaming()`
+- **Error Handling**: Centralized error handling with user-friendly messages
+- **Type Safety**: Full TypeScript types for all API requests/responses
+
+### Key Features Comparison: Streamlit vs Nuxt 4
+
+| Feature | Streamlit (Original) | Nuxt 4 (Current) |
+|---------|---------------------|------------------|
+| **UI Framework** | Streamlit Python | Vue 3 + Nuxt UI |
+| **Language** | Python | TypeScript |
+| **Authentication** | Basic/Session | JWT-based |
+| **Real-time Updates** | Session state | SSE streaming |
+| **Component Library** | Streamlit widgets | Nuxt UI components |
+| **State Management** | st.session_state | Composition API + Pinia |
+| **Routing** | Page-based | File-based + dynamic |
+| **Deployment** | Python container | Node.js container |
+| **Hot Reload** | Streamlit rerun | Vite HMR |
+| **Type Safety** | None | Full TypeScript |
+
+### New Capabilities in Nuxt 4
+
+**1. Dynamic Programs Management**
+- CRUD operations for organizational program categories
+- API endpoints: GET/POST/PUT/DELETE `/api/programs`
+- Real-time program list updates
+- Validation and display ordering
+- Active/inactive program states
+
+**2. Server-Sent Events (SSE) Streaming**
+- Real-time AI response streaming via `/api/query/stream`
+- Chat streaming via `/api/chat/{conversation_id}/stream`
+- Progressive content display (typewriter effect)
+- Sources delivered before content
+- Metadata delivered after completion
+- Graceful error handling during streams
+
+**3. Enhanced Authentication**
+- JWT access and refresh tokens
+- Automatic token refresh before expiration
+- Session validation endpoint
+- Role-based component rendering
+- Protected API routes with automatic 401/403 handling
+
+**4. Modern UI/UX**
+- Responsive design with Tailwind CSS
+- Dark mode support (via Nuxt UI)
+- Loading states and skeleton screens
+- Toast notifications for user feedback
+- Modal dialogs and slide-overs
+- Smooth animations and transitions
+
+**5. Developer Experience**
+- TypeScript autocomplete for API calls
+- Composable functions for reusability
+- Auto-imported components
+- Hot module replacement (HMR)
+- Built-in testing utilities
+- Type-safe routing
 
 ---
 
@@ -395,27 +499,51 @@ The following conflicts have been identified between the original architecture/r
 
 ### API Endpoint Changes Required
 
-#### New Endpoints Needed:
-- `POST /api/auth/login` - User authentication
-- `POST /api/auth/logout` - User logout
-- `GET /api/users` - List users (Admin only)
-- `POST /api/users` - Create user (Admin only)
-- `PUT /api/users/{id}` - Update user (Admin only)
-- `DELETE /api/users/{id}` - Deactivate user (Admin only)
+#### Authentication Endpoints (✅ IMPLEMENTED):
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User authentication (returns JWT tokens)
+- `POST /api/auth/logout` - User logout (invalidates session)
+- `GET /api/auth/session` - Validate current session
+- `GET /api/auth/me` - Get current user details
+
+#### User Management Endpoints (Admin only):
+- `GET /api/users` - List users
+- `POST /api/users` - Create user
+- `PUT /api/users/{id}` - Update user
+- `DELETE /api/users/{id}` - Deactivate user
+
+#### Programs API (✅ IMPLEMENTED):
+- `GET /api/programs` - List all programs with filtering
+- `GET /api/programs/active` - Get active program names only
+- `POST /api/programs` - Create new program (Admin/Editor)
+- `PUT /api/programs/{id}` - Update program (Admin/Editor)
+- `DELETE /api/programs/{id}` - Delete/deactivate program (Admin)
+
+#### Writing Styles API:
 - `POST /api/writing-styles/analyze` - AI analysis of writing samples
 - `GET /api/writing-styles` - List writing styles
 - `POST /api/writing-styles` - Create writing style
 - `PUT /api/writing-styles/{id}` - Update writing style
 - `DELETE /api/writing-styles/{id}` - Delete writing style
+
+#### Outputs API:
 - `GET /api/outputs` - List/search past outputs
 - `GET /api/outputs/{id}` - Get specific output
 - `POST /api/outputs` - Save output from conversation
 - `PUT /api/outputs/{id}` - Update output (success tracking)
 - `DELETE /api/outputs/{id}` - Delete output
+
+#### Streaming Endpoints (✅ IMPLEMENTED):
+- `POST /api/query/stream` - Generate content with SSE streaming
+- `POST /api/chat/{conversation_id}/stream` - Chat with SSE streaming
+
+#### Admin Endpoints:
+- `GET /api/metrics` - System metrics (✅ Admin-only authentication added)
 - `GET /api/audit-log` - View audit log (Admin only)
 
 #### Endpoints to Modify:
-- All endpoints: Add authentication middleware, role checking
+- ✅ All endpoints: Authentication middleware added
+- ✅ All endpoints: Role checking implemented
 - `POST /api/documents/upload` - Add sensitivity confirmation validation
 - `POST /api/chat` - Save context to conversations table
 - `GET /api/conversations/{id}` - Include context and artifacts in response
@@ -424,20 +552,114 @@ The following conflicts have been identified between the original architecture/r
 
 ### Frontend Component Changes Required
 
-Based on conflicts above, the following frontend components are NEW or SIGNIFICANTLY EXPANDED from original requirements:
+Based on Nuxt 4 implementation, the following Vue 3 components are required:
 
-#### New Components (Not in Original Docs):
-1. **Login/Authentication Page** - User login interface
-2. **User Management Page** - Admin interface for managing users (create, edit, deactivate, change roles)
-3. **Writing Styles Creator** - Complete workflow for creating AI-generated writing styles from samples
-4. **Writing Styles Manager** - List, edit, delete, test writing styles (Admin/Editor)
-5. **Past Outputs Dashboard** - Comprehensive output library with search, filter, success tracking
-6. **Success Tracking Form** - Interface for marking grant/proposal outcomes (awarded amounts, dates, notes)
+#### Authentication Components (NEW - Nuxt 4):
+1. **LoginPage.vue** (`pages/login.vue`) - JWT-based authentication
+   - Email/password form with validation
+   - Token storage in localStorage/cookie
+   - Redirect to dashboard after successful login
+   - Error handling for invalid credentials
 
-#### Expanded Components:
-1. **Document Upload** - Add sensitivity confirmation checkbox and warning
-2. **Chat Interface** - Add writing style selector, context management, version tracking within conversation
-3. **Settings Page** - Add user preferences, writing style management section
+2. **AuthGuard Middleware** (`middleware/auth.ts`) - Route protection
+   - Verify JWT token presence and validity
+   - Redirect to login if unauthenticated
+   - Role-based route restrictions
+   - Automatic token refresh
+
+#### User Management Components (Admin):
+1. **UserManagementPage.vue** - Admin interface for users
+   - User list with UTable component
+   - Create/edit user modal (UModal)
+   - Role assignment dropdown (USelectMenu)
+   - Activate/deactivate toggle
+   - Search and filter users
+
+#### Programs Management Components (NEW - Nuxt 4):
+1. **ProgramsPage.vue** - Manage organizational programs
+   - Programs list with display ordering
+   - Create/edit program modal
+   - Active/inactive toggle
+   - Drag-and-drop reordering
+   - Used by document upload for tagging
+
+#### Writing Styles Components:
+1. **WritingStylesCreator.vue** - AI-powered style creation
+   - Multi-step form wizard
+   - Sample text input (3-7 samples)
+   - AI analysis progress indicator
+   - Generated style prompt editor
+   - Preview and refinement interface
+
+2. **WritingStylesManager.vue** - Manage writing styles
+   - Styles list with UCard components
+   - Edit/delete/duplicate actions
+   - Test style preview
+   - Active/inactive states
+
+#### Document Management Components:
+1. **DocumentUploadPage.vue** - Enhanced upload interface
+   - File drag-and-drop (UFileUpload)
+   - Metadata form with program multi-select
+   - Sensitivity confirmation checkbox
+   - Upload progress with UProgress
+   - Batch upload support
+
+2. **DocumentLibraryPage.vue** - Document browser
+   - Searchable, filterable UTable
+   - Quick filters for type, year, program
+   - Document preview modal
+   - Bulk delete actions (Admin/Editor)
+
+#### AI Writing Assistant Components:
+1. **ChatInterface.vue** - Main chat interface
+   - Message list with streaming support
+   - Input box with UTextarea
+   - Context sidebar (style, audience, section)
+   - Sources panel with expandable cards
+   - Artifact display panel
+   - SSE streaming integration
+
+2. **StreamingMessageComponent.vue** - Real-time message display
+   - Progressive content rendering
+   - Typewriter effect animation
+   - Citation highlighting
+   - Copy and regenerate actions
+
+#### Outputs Management Components:
+1. **PastOutputsPage.vue** - Output library dashboard
+   - Outputs grid/list with UCard
+   - Search and filter sidebar
+   - Success indicator badges
+   - Award amount display
+   - Quick actions (download, duplicate)
+
+2. **SuccessTrackingForm.vue** - Grant/proposal outcome tracking
+   - Status dropdown (Submitted, Pending, Awarded, Not Awarded)
+   - Funder name input
+   - Award amount fields
+   - Dates (submission, decision)
+   - Notes textarea
+
+#### Layout Components:
+1. **DefaultLayout.vue** - Main application layout
+   - Navigation sidebar with role-based menu items
+   - User profile dropdown
+   - Dark mode toggle
+   - Logout button
+
+2. **NavigationSidebar.vue** - App navigation
+   - Collapsible sidebar
+   - Active route highlighting
+   - Icon + label menu items
+   - Role-restricted menu items
+
+#### Reusable Components:
+1. **ApiErrorAlert.vue** - Error display
+2. **LoadingSpinner.vue** - Loading states
+3. **ConfirmDialog.vue** - Confirmation modals
+4. **ToastNotification.vue** - User feedback
+5. **ProtectedRoute.vue** - Auth wrapper component
 
 ---
 
@@ -974,14 +1196,64 @@ Primary interface for AI-assisted content creation:
 - Right sidebar: Context panel (sources, settings, style info)
 - Message-based interaction with persistent context
 
-**REQ-CHAT-002: Streamlit Implementation**
+**REQ-CHAT-002: Nuxt 4 Implementation**
 
-Using Streamlit's native chat components:
-- `st.chat_message()` for message bubbles
-- `st.chat_input()` for user input
-- `st.session_state` for conversation persistence
-- `st.sidebar` for conversation list and settings
-- Streaming response support via `st.write_stream()`
+Using Vue 3 composition API with Nuxt UI components:
+- **Message Display**: Custom `ChatMessage.vue` component with UCard
+- **User Input**: UTextarea with send button
+- **State Management**: Vue `ref()` and `reactive()` for conversation state
+- **Sidebar**: `USlideover` or persistent navigation panel
+- **Streaming**: SSE streaming with `ReadableStream` API for real-time response display
+
+**Component Structure:**
+```vue
+<template>
+  <div class="chat-container flex h-screen">
+    <!-- Left Sidebar: Conversation History -->
+    <aside class="w-64 border-r">
+      <ConversationList
+        :conversations="conversations"
+        @select="loadConversation"
+      />
+    </aside>
+
+    <!-- Center: Active Chat -->
+    <main class="flex-1 flex flex-col">
+      <ChatMessages :messages="currentMessages" />
+      <ChatInput @send="handleSendMessage" />
+    </main>
+
+    <!-- Right Sidebar: Context & Sources -->
+    <aside class="w-80 border-l">
+      <ContextPanel :context="conversationContext" />
+      <SourcesPanel :sources="currentSources" />
+    </aside>
+  </div>
+</template>
+
+<script setup lang="ts">
+const currentMessages = ref<Message[]>([])
+const conversations = ref<Conversation[]>([])
+const conversationContext = reactive({
+  writingStyle: null,
+  audience: null,
+  section: null,
+  tone: 0.8
+})
+
+const handleSendMessage = async (message: string) => {
+  // Add user message
+  currentMessages.value.push({
+    role: 'user',
+    content: message,
+    timestamp: new Date()
+  })
+
+  // Stream AI response
+  await streamResponse(message)
+}
+</script>
+```
 
 ### Conversation Management
 
@@ -1071,24 +1343,107 @@ When AI responds:
    - Continue writing
    - Save as output
 
-**REQ-CHAT-009: Streaming Implementation**
+**REQ-CHAT-009: SSE Streaming Implementation (Nuxt 4)**
 
-Using Streamlit streaming:
-```python
-# Pseudo-code for streaming
-response_container = st.empty()
-full_response = ""
+Using Server-Sent Events (SSE) with Fetch ReadableStream API:
 
-for chunk in api.stream_generate():
-    full_response += chunk
-    response_container.markdown(full_response)
+```typescript
+// composables/useStreamingChat.ts
+export const useStreamingChat = () => {
+  const config = useRuntimeConfig()
+  const { token } = useAuth()
+
+  const streamChatResponse = async (
+    query: string,
+    onChunk: (content: string) => void,
+    onSources?: (sources: any[]) => void,
+    onDone?: () => void,
+    onError?: (error: any) => void
+  ) => {
+    try {
+      const response = await fetch(`${config.public.apiBase}/api/query/stream`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token.value}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          query,
+          audience: conversationContext.audience,
+          section: conversationContext.section,
+          writing_style_id: conversationContext.writingStyleId
+        })
+      })
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader!.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            const data = JSON.parse(line.slice(5).trim())
+
+            // Handle different SSE event types
+            if (data.sources && onSources) {
+              onSources(data.sources)
+            } else if (data.content) {
+              onChunk(data.content)
+            } else if (data.metadata && onDone) {
+              onDone()
+            }
+          }
+        }
+      }
+    } catch (error) {
+      onError?.(error)
+    }
+  }
+
+  return { streamChatResponse }
+}
+```
+
+**Usage in Component:**
+```vue
+<script setup lang="ts">
+const { streamChatResponse } = useStreamingChat()
+const streamingContent = ref('')
+
+const handleSend = async (message: string) => {
+  streamingContent.value = ''
+
+  await streamChatResponse(
+    message,
+    (chunk) => {
+      streamingContent.value += chunk  // Typewriter effect
+    },
+    (sources) => {
+      currentSources.value = sources
+    },
+    () => {
+      // Stream complete
+      isStreaming.value = false
+    }
+  )
+}
+</script>
 ```
 
 Benefits:
 - Immediate user feedback (lower perceived latency)
-- Shows generation in real-time
-- Can cancel long generations
+- Shows generation in real-time (typewriter effect)
+- Can cancel long generations (abort controller)
 - Better UX for long responses
+- Native browser API support
+- Works seamlessly with Nuxt SSR
 
 ### Context & Sources Panel
 
@@ -1804,16 +2159,30 @@ Accessible color choices:
 
 ## Summary
 
-This comprehensive frontend requirements document specifies:
+This comprehensive frontend requirements document specifies the **Nuxt 4 (Vue 3 + TypeScript)** implementation for Org Archivist:
 
 ✅ **User Roles**: Three distinct roles (Administrator, Editor, Writer) with clear permissions
+✅ **JWT Authentication**: Full authentication flow with access/refresh tokens and session management
 ✅ **Writing Styles**: Complete workflow for creating AI-powered writing style guides from samples
 ✅ **Document Library**: Full-featured document management with role-based access
+✅ **Programs Management**: Dynamic CRUD operations for organizational program categories
 ✅ **Past Outputs**: Comprehensive output tracking with success indicators for grants
-✅ **AI Writing Assistant**: Chat-style interface with iterative refinement and conversation history
-✅ **Streamlit Compatibility**: Confirmed that Streamlit can fully support the chat interface and all required features
+✅ **AI Writing Assistant**: Chat-style interface with SSE streaming, iterative refinement, and conversation history
+✅ **SSE Streaming**: Real-time AI response streaming with typewriter effect using ReadableStream API
+✅ **Nuxt 4 Components**: Modern Vue 3 components using Nuxt UI library built on Tailwind CSS
+✅ **TypeScript Throughout**: Full type safety for all API interactions and component props
 ✅ **Business Logic**: Detailed logic for style analysis, context management, quality validation, and retrieval
-✅ **Error Handling**: Comprehensive error states and user guidance
-✅ **Performance**: Response time expectations and UX optimizations
+✅ **Error Handling**: Comprehensive error states and user guidance with toast notifications
+✅ **Performance**: Response time expectations, SSE streaming, and UX optimizations
+✅ **Security**: Role-based access control, protected routes, and admin-only endpoints
 
-The document provides sufficient detail to begin frontend development with clear requirements for each feature and a complete understanding of the user experience.
+**Key Migration Changes:**
+- ✅ Replaced Streamlit with Nuxt 4 (Vue 3 + TypeScript)
+- ✅ Added JWT-based authentication with refresh tokens
+- ✅ Implemented SSE streaming for real-time AI responses
+- ✅ Added dynamic Programs API for organizational categories
+- ✅ Enhanced security with admin-only metrics endpoint
+- ✅ Full type safety with TypeScript
+- ✅ Modern UI with Nuxt UI components
+
+The document provides sufficient detail for Nuxt 4 frontend development with clear requirements for each feature, Vue 3 component structure, TypeScript types, and a complete understanding of the user experience.
