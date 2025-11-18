@@ -40,7 +40,7 @@
                 <span class="text-xs text-gray-500 dark:text-gray-400">
                   {{ formatRelativeTime(chat.updated_at) }}
                 </span>
-                <UBadge v-if="chat.messages" color="gray" variant="subtle" size="xs">
+                <UBadge v-if="chat.messages" color="neutral" variant="subtle" size="xs">
                   {{ chat.messages.length }} messages
                 </UBadge>
               </div>
@@ -74,7 +74,7 @@
                   <h3 class="font-medium truncate">{{ upload.filename }}</h3>
                 </div>
                 <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <UBadge color="blue" variant="subtle" size="xs">
+                  <UBadge color="info" variant="subtle" size="xs">
                     {{ upload.metadata.doc_type }}
                   </UBadge>
                   <span class="text-xs">{{ formatFileSize(upload.file_size) }}</span>
@@ -122,7 +122,7 @@
                   <h3 class="font-medium truncate">{{ output.title }}</h3>
                 </div>
                 <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <UBadge color="green" variant="subtle" size="xs">
+                  <UBadge color="success" variant="subtle" size="xs">
                     {{ formatOutputType(output.output_type) }}
                   </UBadge>
                   <span v-if="output.word_count" class="text-xs">{{ output.word_count }} words</span>
@@ -162,6 +162,9 @@
 
 import type { TabsItem } from '@nuxt/ui'
 import type { Conversation, DocumentResponse, OutputResponse } from '~/types/api'
+
+// Type-safe Nuxt UI colors
+type BadgeColor = 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
 
 // ============================================================================
 // Tab Configuration
@@ -337,28 +340,28 @@ const formatOutputType = (type: string): string => {
 /**
  * Get color for processing status badge
  */
-const getStatusColor = (status: string): string => {
-  const statusColors: Record<string, string> = {
-    pending: 'yellow',
-    processing: 'blue',
-    completed: 'green',
-    failed: 'red'
+const getStatusColor = (status: string): BadgeColor => {
+  const statusColors: Record<string, BadgeColor> = {
+    pending: 'warning',
+    processing: 'info',
+    completed: 'success',
+    failed: 'error'
   }
-  return statusColors[status] || 'gray'
+  return statusColors[status] || 'neutral'
 }
 
 /**
  * Get color for output status badge
  */
-const getOutputStatusColor = (status: string): string => {
-  const statusColors: Record<string, string> = {
-    draft: 'gray',
-    submitted: 'blue',
-    pending: 'yellow',
-    awarded: 'green',
-    not_awarded: 'red'
+const getOutputStatusColor = (status: string): BadgeColor => {
+  const statusColors: Record<string, BadgeColor> = {
+    draft: 'neutral',
+    submitted: 'info',
+    pending: 'warning',
+    awarded: 'success',
+    not_awarded: 'error'
   }
-  return statusColors[status] || 'gray'
+  return statusColors[status] || 'neutral'
 }
 
 // ============================================================================

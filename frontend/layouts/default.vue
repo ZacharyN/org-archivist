@@ -39,11 +39,10 @@
           <template #mobile-menu>
             <UButton
               icon="i-heroicons-bars-3"
-              color="gray"
+              color="neutral"
               variant="ghost"
               size="lg"
-              :ui="{ rounded: 'rounded-full' }"
-              class="lg:hidden"
+              class="lg:hidden rounded-full"
               aria-label="Open sidebar"
               @click="openMobileSidebar"
             />

@@ -35,11 +35,10 @@
         <UButton
           v-if="showNotifications"
           icon="i-heroicons-bell"
-          color="gray"
+          color="neutral"
           variant="ghost"
           size="lg"
-          :ui="{ rounded: 'rounded-full' }"
-          class="relative"
+          class="relative rounded-full"
           aria-label="Notifications"
         >
           <!-- Notification Badge -->
@@ -54,26 +53,21 @@
           v-if="user"
           :items="userMenuItems"
           :ui="{
-            content: 'w-56',
-            item: {
-              base: 'group flex items-center gap-2 w-full',
-              padding: 'px-3 py-2'
-            }
+            content: 'w-56'
           }"
         >
           <!-- User Avatar & Name Button -->
           <template #default>
             <UButton
-              color="gray"
+              color="neutral"
               variant="ghost"
-              class="flex items-center space-x-2 px-2 sm:px-3"
-              :ui="{ rounded: 'rounded-full' }"
+              class="flex items-center space-x-2 px-2 sm:px-3 rounded-full"
             >
               <!-- User Avatar -->
               <UAvatar
                 :alt="user.full_name || user.email"
                 size="sm"
-                :ui="{ background: 'bg-primary-500' }"
+                class="bg-primary-500"
               >
                 <span class="text-xs font-medium text-white">
                   {{ userInitials }}
@@ -305,11 +299,7 @@ const userMenuItems = computed<DropdownMenuItem[][]>(() => {
       label: 'Logout',
       icon: 'i-heroicons-arrow-right-on-rectangle',
       click: handleLogout,
-      ui: {
-        item: {
-          base: 'text-red-600 dark:text-red-400',
-        },
-      },
+      class: 'text-red-600 dark:text-red-400',
     },
   ])
 

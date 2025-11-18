@@ -18,7 +18,7 @@
         <UFormField
           name="files"
           label="Documents"
-          :error="validationError"
+          :error="validationError || undefined"
           :help="!validationError ? 'PDF, DOCX, or TXT files. Max 50MB per file.' : undefined"
         >
           <UFileUpload
@@ -87,12 +87,12 @@
       <UFormField
         v-if="selectedFiles && selectedFiles.length > 0"
         name="sensitivity_confirmation"
-        :error="sensitivityError"
+        :error="sensitivityError || undefined"
       >
         <UCard
           :ui="{
             body: 'p-4',
-            ring: sensitivityError ? 'ring-2 ring-red-500' : ''
+            root: sensitivityError ? 'ring-2 ring-red-500' : ''
           }"
         >
           <div class="space-y-3">
@@ -111,7 +111,7 @@
                   financial, or sensitive operational documents.
                 </p>
                 <UAlert
-                  color="yellow"
+                  color="warning"
                   variant="soft"
                   icon="i-heroicons-information-circle"
                   class="mt-2"
@@ -163,7 +163,7 @@
       <div class="flex items-center justify-between pt-4 border-t">
         <UButton
           label="Cancel"
-          color="gray"
+          color="neutral"
           variant="ghost"
           icon="i-heroicons-x-mark"
           @click="handleCancel"

@@ -28,13 +28,7 @@
         :loading="loadingConversations"
         :disabled="recentConversationsOptions.length === 0"
         @update:model-value="resumeChat"
-      >
-        <template #label>
-          <span v-if="selectedConversation">
-            {{ recentConversations.find(c => c.conversation_id === selectedConversation)?.name }}
-          </span>
-        </template>
-      </USelectMenu>
+      />
 
       <!-- Quick Context Selectors -->
       <div class="grid grid-cols-2 gap-2">
@@ -45,13 +39,7 @@
           placeholder="Writing Style"
           size="sm"
           :loading="loadingWritingStyles"
-        >
-          <template #label>
-            <span v-if="quickContext.writingStyleId" class="truncate">
-              {{ writingStyles.find(s => s.style_id === quickContext.writingStyleId)?.name }}
-            </span>
-          </template>
-        </USelectMenu>
+        />
 
         <!-- Audience Input -->
         <UInput
@@ -236,7 +224,7 @@ const startNewChat = async () => {
     toast.add({
       title: 'Failed to create conversation',
       description: 'Please try again or navigate to the chat page directly.',
-      color: 'red',
+      color: 'error',
       icon: 'i-heroicons-exclamation-triangle'
     })
   } finally {
@@ -247,9 +235,11 @@ const startNewChat = async () => {
 /**
  * Resume an existing conversation
  */
-const resumeChat = (conversationId: string) => {
-  if (conversationId) {
-    navigateTo(`/chat/${conversationId}`)
+const resumeChat = (item: string | { value?: string } | any) => {
+  if (typeof item === 'string') {
+    navigateTo(`/chat/${item}`)
+  } else if (item?.value) {
+    navigateTo(`/chat/${item.value}`)
   }
 }
 

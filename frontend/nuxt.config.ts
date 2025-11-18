@@ -8,6 +8,8 @@ export default defineNuxtConfig({
     '@nuxt/icon'
   ],
 
+  css: ['~/assets/css/main.css'],
+
   runtimeConfig: {
     // Private keys (server-side only)
     // Add any server-side secrets here

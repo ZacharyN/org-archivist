@@ -15,7 +15,7 @@
         </p>
 
         <UAlert
-          color="green"
+          color="success"
           variant="soft"
           icon="i-heroicons-information-circle"
           title="Editor & Admin Access"
@@ -41,7 +41,7 @@
               <div>
                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Can Edit</dt>
                 <dd>
-                  <UBadge :color="canEdit ? 'green' : 'gray'" variant="soft">
+                  <UBadge :color="canEdit ? 'success' : 'neutral'" variant="soft">
                     {{ canEdit ? 'Yes' : 'No' }}
                   </UBadge>
                 </dd>
@@ -49,7 +49,7 @@
               <div>
                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Is Admin</dt>
                 <dd>
-                  <UBadge :color="isAdmin ? 'blue' : 'gray'" variant="soft">
+                  <UBadge :color="isAdmin ? 'info' : 'neutral'" variant="soft">
                     {{ isAdmin ? 'Yes' : 'No' }}
                   </UBadge>
                 </dd>
@@ -60,7 +60,7 @@
 
         <div v-if="canEdit" class="mt-4">
           <UAlert
-            color="yellow"
+            color="warning"
             variant="soft"
             icon="i-heroicons-sparkles"
             title="You can manage documents"
@@ -71,7 +71,7 @@
         <div class="flex gap-2 mt-4">
           <UButton
             label="Back to Home"
-            color="gray"
+            color="neutral"
             icon="i-heroicons-arrow-left"
             @click="$router.push('/')"
           />
@@ -115,13 +115,13 @@ const { user, isAdmin, canEdit } = useAuth()
 const getBadgeColor = (role: string | undefined) => {
   switch (role) {
     case 'admin':
-      return 'blue'
+      return 'info'
     case 'editor':
-      return 'green'
+      return 'success'
     case 'writer':
-      return 'yellow'
+      return 'warning'
     default:
-      return 'gray'
+      return 'neutral'
   }
 }
 </script>

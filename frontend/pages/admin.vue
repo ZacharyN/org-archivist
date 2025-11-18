@@ -14,7 +14,7 @@
         </p>
 
         <UAlert
-          color="blue"
+          color="info"
           variant="soft"
           icon="i-heroicons-information-circle"
           title="Admin Access Only"
@@ -36,7 +36,7 @@
               <div>
                 <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Role</dt>
                 <dd>
-                  <UBadge color="blue" variant="soft">
+                  <UBadge color="info" variant="soft">
                     {{ user?.role }}
                   </UBadge>
                 </dd>
@@ -48,7 +48,7 @@
         <div class="flex gap-2 mt-4">
           <UButton
             label="Back to Home"
-            color="gray"
+            color="neutral"
             icon="i-heroicons-arrow-left"
             @click="$router.push('/')"
           />

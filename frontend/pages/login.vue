@@ -15,11 +15,11 @@
       <!-- Error Alert -->
       <UAlert
         v-if="error"
-        color="red"
+        color="error"
         variant="soft"
         icon="i-heroicons-exclamation-triangle"
         :title="error"
-        :close-button="{ icon: 'i-heroicons-x-mark', color: 'red', variant: 'link' }"
+        :close-button="{ icon: 'i-heroicons-x-mark', color: 'error', variant: 'link' }"
         @close="error = null"
         class="mb-4"
       />
@@ -49,14 +49,11 @@
             :disabled="loading"
             autocomplete="current-password"
             size="lg"
-            :ui="{
-              icon: { trailing: { pointer: '' } }
-            }"
           >
             <template #trailing>
               <UButton
                 :icon="showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'"
-                color="gray"
+                color="neutral"
                 variant="link"
                 :padded="false"
                 @click="showPassword = !showPassword"

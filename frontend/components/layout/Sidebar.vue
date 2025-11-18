@@ -18,24 +18,22 @@
       <!-- Desktop/Tablet: Toggle button -->
       <UButton
         icon="i-heroicons-bars-3"
-        color="gray"
+        color="neutral"
         variant="ghost"
         size="sm"
-        :ui="{ rounded: 'rounded-full' }"
+        class="hidden lg:flex rounded-full"
         :aria-label="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        class="hidden lg:flex"
         @click="toggleSidebar"
       />
 
       <!-- Mobile: Close button -->
       <UButton
         icon="i-heroicons-x-mark"
-        color="gray"
+        color="neutral"
         variant="ghost"
         size="sm"
-        :ui="{ rounded: 'rounded-full' }"
+        class="lg:hidden rounded-full"
         aria-label="Close sidebar"
-        class="lg:hidden"
         @click="emit('closeMobile')"
       />
     </div>
@@ -151,7 +149,7 @@ interface NavigationItem {
   icon: string
   to: string
   badge?: string
-  badgeColor?: 'primary' | 'green' | 'yellow' | 'red'
+  badgeColor?: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
   roles?: Array<'admin' | 'editor' | 'writer'>
 }
 
@@ -328,14 +326,27 @@ nav::-webkit-scrollbar {
 }
 
 nav::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800;
+  background-color: rgb(243 244 246);
+}
+
+:root.dark nav::-webkit-scrollbar-track {
+  background-color: rgb(31 41 55);
 }
 
 nav::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+  background-color: rgb(209 213 219);
+  border-radius: 9999px;
+}
+
+:root.dark nav::-webkit-scrollbar-thumb {
+  background-color: rgb(75 85 99);
 }
 
 nav::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-500;
+  background-color: rgb(156 163 175);
+}
+
+:root.dark nav::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107 114 128);
 }
 </style>
