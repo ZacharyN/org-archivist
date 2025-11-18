@@ -311,6 +311,9 @@ const getLastMessage = (chat: Conversation): string => {
     return 'No messages yet'
   }
   const lastMessage = chat.messages[chat.messages.length - 1]
+  if (!lastMessage) {
+    return 'No messages yet'
+  }
   return lastMessage.content.substring(0, 100) + (lastMessage.content.length > 100 ? '...' : '')
 }
 

@@ -289,7 +289,9 @@ const validateAllForms = () => {
 
   if (applyToAll.value) {
     // Validate single form for all files
-    const errors = validateMetadata(metadataForms.value[0], 0)
+    const firstForm = metadataForms.value[0]
+    if (!firstForm) return false
+    const errors = validateMetadata(firstForm, 0)
     validationErrors.value[0] = errors
     hasErrors = Object.keys(errors).length > 0
   } else {
@@ -327,10 +329,11 @@ const updateMetadata = (index: number, metadata: DocumentMetadata) => {
  */
 const applyMetadataToAll = (sourceIndex: number) => {
   const sourceMetadata = metadataForms.value[sourceIndex]
+  if (!sourceMetadata) return
 
   metadataForms.value = metadataForms.value.map(() => ({
     ...sourceMetadata,
-  }))
+  } as DocumentMetadata))
 
   // Clear all validation errors
   validationErrors.value = props.files.map(() => ({}))
@@ -355,9 +358,10 @@ const disableApplyToAll = () => {
 
   // Copy the template metadata to all forms
   const templateMetadata = metadataForms.value[0]
+  if (!templateMetadata) return
   metadataForms.value = metadataForms.value.map(() => ({
     ...templateMetadata,
-  }))
+  } as DocumentMetadata))
 }
 
 /**
@@ -382,6 +386,7 @@ const handleContinue = () => {
   props.files.forEach((file, index) => {
     // If "apply to all" is enabled, use the first form's metadata for all files
     const metadata = applyToAll.value ? metadataForms.value[0] : metadataForms.value[index]
+    if (!metadata) return
 
     metadataMap[file.name] = {
       ...metadata,

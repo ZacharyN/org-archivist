@@ -188,7 +188,11 @@ const userInitials = computed(() => {
   if (user.value.full_name) {
     const names = user.value.full_name.split(' ')
     if (names.length >= 2) {
-      return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
+      const first = names[0]
+      const last = names[names.length - 1]
+      if (first && last) {
+        return `${first[0]}${last[0]}`.toUpperCase()
+      }
     }
     return user.value.full_name.substring(0, 2).toUpperCase()
   }

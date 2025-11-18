@@ -1,6 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  compatibilityDate: '2024-04-03',
+  compatibilityDate: '2025-01-01',
   devtools: { enabled: true },
 
   modules: [
@@ -9,6 +9,13 @@ export default defineNuxtConfig({
   ],
 
   css: ['~/assets/css/main.css'],
+
+  // PostCSS configuration (moved from postcss.config.js for Nuxt 4)
+  postcss: {
+    plugins: {
+      '@tailwindcss/postcss': {},
+    },
+  },
 
   runtimeConfig: {
     // Private keys (server-side only)
