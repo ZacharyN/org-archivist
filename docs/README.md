@@ -21,6 +21,7 @@ This documentation is actively maintained and essential for understanding, maint
 
 **Essential documentation:**
 - **[nuxt4-setup.md](nuxt4-setup.md)** - Nuxt 4 framework setup and configuration
+- **[nuxt-ui-component-guide.md](nuxt-ui-component-guide.md)** - Nuxt UI component patterns, type-safe usage, and common pitfalls
 - **[nuxt4-implementation-risks.md](nuxt4-implementation-risks.md)** - Important risks and considerations for Nuxt 4 development
 - **[backend-api-guide.md](backend-api-guide.md)** - Complete backend API reference for frontend integration
 
