@@ -1,8 +1,8 @@
-# Nuxt 3 + Nuxt UI v3 + Tailwind v4 Docker Setup Guide
+# Nuxt 4 + Nuxt UI v3 + Tailwind v4 Docker Setup Guide
 
 **Last Updated:** November 18, 2025
 **Author:** Based on org-archivist implementation
-**Tech Stack:** Nuxt 3.15+, Nuxt UI v3.3+, Tailwind CSS v4.1+
+**Tech Stack:** Nuxt 4 (3.15+ with compatibility mode), Nuxt UI v3.3+, Tailwind CSS v4.1+
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@
 
 ## Overview
 
-This guide covers the proper setup of a Nuxt 3 application with Nuxt UI v3 and Tailwind CSS v4 running in Docker production containers.
+This guide covers the proper setup of a Nuxt 4 application with Nuxt UI v3 and Tailwind CSS v4 running in Docker production containers.
 
 ### Key Differences from Nuxt UI v2
 
@@ -36,11 +36,13 @@ This guide covers the proper setup of a Nuxt 3 application with Nuxt UI v3 and T
 
 ```json
 {
-  "nuxt": "^3.15.0",
+  "nuxt": "^3.15.1",  // Nuxt 4 compatibility mode (or nuxt@^4.0.0 when released)
   "@nuxt/ui": "^3.0.0",
   "tailwindcss": "^4.0.0" // (installed via @nuxt/ui)
 }
 ```
+
+**Note:** Nuxt 3.15+ includes Nuxt 4 compatibility features. When Nuxt 4.0 is officially released, you can upgrade to `"nuxt": "^4.0.0"` with the same configuration.
 
 ### System Requirements
 
@@ -133,6 +135,7 @@ export default {
 ```typescript
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
+  // ⚠️ Enable Nuxt 4 compatibility features
   compatibilityDate: '2024-04-03',
   devtools: { enabled: true },
 
@@ -627,7 +630,7 @@ Use this checklist when setting up a new project:
 ## Additional Resources
 
 ### Official Documentation
-- [Nuxt 3 Documentation](https://nuxt.com)
+- [Nuxt 4 Documentation](https://nuxt.com) (includes Nuxt 3.15+ compatibility mode)
 - [Nuxt UI v3 Documentation](https://ui.nuxt.com)
 - [Tailwind CSS v4 Documentation](https://tailwindcss.com/docs/v4-beta)
 
