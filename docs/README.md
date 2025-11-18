@@ -21,6 +21,7 @@ This documentation is actively maintained and essential for understanding, maint
 
 **Essential documentation:**
 - **[nuxt4-setup.md](nuxt4-setup.md)** - Nuxt 4 framework setup and configuration
+- **[nuxt-ui-tailwind-docker-setup-guide.md](nuxt-ui-tailwind-docker-setup-guide.md)** - Complete setup guide for Nuxt UI v3 + Tailwind v4 in Docker (includes common pitfalls and solutions)
 - **[nuxt-ui-component-guide.md](nuxt-ui-component-guide.md)** - Nuxt UI component patterns, type-safe usage, and common pitfalls
 - **[nuxt4-implementation-risks.md](nuxt4-implementation-risks.md)** - Important risks and considerations for Nuxt 4 development
 - **[backend-api-guide.md](backend-api-guide.md)** - Complete backend API reference for frontend integration

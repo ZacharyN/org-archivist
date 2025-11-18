@@ -192,13 +192,13 @@ services:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000
-    volumes:
+    # volumes:
       # Mount frontend code for development (hot reload)
-      # Comment out for production deployment
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.nuxt
-      - /app/.output
+      # Comment out for production deployment - COMMENTED OUT FOR PRODUCTION
+      # - ./frontend:/app
+      # - /app/node_modules
+      # - /app/.nuxt
+      # - /app/.output
     depends_on:
       backend:
         condition: service_healthy
