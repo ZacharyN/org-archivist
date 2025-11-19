@@ -1,8 +1,8 @@
-# Nuxt 4 + Nuxt UI v3 + Tailwind v4 Docker Setup Guide
+# Nuxt 4 + Nuxt UI v4 + Tailwind v4 Docker Setup Guide
 
-**Last Updated:** November 18, 2025
+**Last Updated:** November 19, 2025
 **Author:** Based on org-archivist implementation
-**Tech Stack:** Nuxt 4 (3.15+ with compatibility mode), Nuxt UI v3.3+, Tailwind CSS v4.1+
+**Tech Stack:** Nuxt 4.2+, Nuxt UI v4.2+, Tailwind CSS v4.1+
 
 ## Table of Contents
 
@@ -19,9 +19,9 @@
 
 ## Overview
 
-This guide covers the proper setup of a Nuxt 4 application with Nuxt UI v3 and Tailwind CSS v4 running in Docker production containers.
+This guide covers the proper setup of a Nuxt 4 application with Nuxt UI v4 and Tailwind CSS v4 running in Docker production containers.
 
-### Key Differences from Nuxt UI v2
+### Key Differences from Nuxt UI v3
 
 - **Tailwind v4** uses `@import` syntax instead of `@tailwind` directives
 - **CSS is embedded** in JavaScript modules (not separate .css files)
@@ -36,13 +36,13 @@ This guide covers the proper setup of a Nuxt 4 application with Nuxt UI v3 and T
 
 ```json
 {
-  "nuxt": "^3.15.1",  // Nuxt 4 compatibility mode (or nuxt@^4.0.0 when released)
-  "@nuxt/ui": "^3.0.0",
-  "tailwindcss": "^4.0.0" // (installed via @nuxt/ui)
+  "nuxt": "^4.2.1",
+  "@nuxt/ui": "^4.2.0",
+  "tailwindcss": "^4.1.0" // (installed via @nuxt/ui)
 }
 ```
 
-**Note:** Nuxt 3.15+ includes Nuxt 4 compatibility features. When Nuxt 4.0 is officially released, you can upgrade to `"nuxt": "^4.0.0"` with the same configuration.
+**Note:** Nuxt 4 is now officially released. The above versions are the current stable releases.
 
 ### System Requirements
 
@@ -67,7 +67,7 @@ cd my-project
 npm install @nuxt/ui @nuxt/icon
 ```
 
-**Note:** Nuxt UI v3 automatically installs Tailwind CSS v4 as a dependency. Do NOT manually install tailwindcss.
+**Note:** Nuxt UI v4 automatically installs Tailwind CSS v4 as a dependency. Do NOT manually install tailwindcss.
 
 ### Step 3: Project Structure
 
@@ -199,7 +199,7 @@ export default {
 } satisfies Config
 ```
 
-**Note:** With Nuxt UI v3 + Tailwind v4, this file is mostly optional. Nuxt UI handles the configuration.
+**Note:** With Nuxt UI v4 + Tailwind v4, this file is mostly optional. Nuxt UI handles the configuration.
 
 ---
 
@@ -461,7 +461,7 @@ npm ci
 **This is NOT an issue!**
 
 **Expected Behavior:**
-- Nuxt UI v3 + Tailwind v4 embeds CSS in `<style>` tags in HTML
+- Nuxt UI v4 + Tailwind v4 embeds CSS in `<style>` tags in HTML
 - CSS is also in JavaScript modules (entry-styles.*.mjs)
 - You will NOT see large separate .css files in production
 
@@ -609,7 +609,7 @@ Use this checklist when setting up a new project:
 ### Configuration Phase
 - [ ] Verify nuxt.config.ts has @nuxt/ui in modules array
 - [ ] Verify app.config.ts exists with ui configuration
-- [ ] Check package.json has @nuxt/ui v3+ and nuxt 3.15+
+- [ ] Check package.json has @nuxt/ui v4+ and nuxt 4.2+
 
 ### Docker Phase
 - [ ] Create production Dockerfile with multi-stage build
@@ -630,9 +630,9 @@ Use this checklist when setting up a new project:
 ## Additional Resources
 
 ### Official Documentation
-- [Nuxt 4 Documentation](https://nuxt.com) (includes Nuxt 3.15+ compatibility mode)
-- [Nuxt UI v3 Documentation](https://ui.nuxt.com)
-- [Tailwind CSS v4 Documentation](https://tailwindcss.com/docs/v4-beta)
+- [Nuxt 4 Documentation](https://nuxt.com)
+- [Nuxt UI v4 Documentation](https://ui.nuxt.com)
+- [Tailwind CSS v4 Documentation](https://tailwindcss.com/docs)
 
 ### Example Configuration Files
 
@@ -649,6 +649,7 @@ Full working examples are available in this repository:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2025-11-19 | 1.1 | Updated to Nuxt UI v4 (from v3) |
 | 2025-11-18 | 1.0 | Initial guide based on org-archivist implementation |
 
 ---
@@ -661,7 +662,7 @@ Full working examples are available in this repository:
 2. **CSS Imports:** Use `@import "tailwindcss"` syntax in main.css (not @tailwind)
 3. **Docker Volumes:** Remove volume mounts from production docker-compose.yml
 
-**If you follow these three rules, your Nuxt UI v3 + Tailwind v4 app will work correctly in Docker production builds.**
+**If you follow these three rules, your Nuxt UI v4 + Tailwind v4 app will work correctly in Docker production builds.**
 
 ---
 
