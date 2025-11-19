@@ -1,5 +1,18 @@
 <template>
   <div>
+    <!-- Permission Error Alert -->
+    <UAlert
+      v-if="showPermissionError"
+      color="error"
+      variant="soft"
+      icon="i-heroicons-shield-exclamation"
+      title="Access Denied"
+      description="You don't have permission to access that page. Contact your administrator if you need elevated privileges."
+      class="mb-6"
+      :close-button="{ icon: 'i-heroicons-x-mark', color: 'error', variant: 'link' }"
+      @close="clearPermissionError"
+    />
+
     <!-- Dashboard Header -->
     <div class="mb-6">
       <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
@@ -53,4 +66,25 @@
 definePageMeta({
   middleware: 'auth'
 })
+
+// ============================================================================
+// Error Handling
+// ============================================================================
+
+const route = useRoute()
+const router = useRouter()
+
+/**
+ * Check if user was redirected due to insufficient permissions
+ */
+const showPermissionError = computed(() => {
+  return route.query.error === 'insufficient_permissions'
+})
+
+/**
+ * Clear permission error by removing query parameter
+ */
+const clearPermissionError = () => {
+  router.replace({ query: {} })
+}
 </script>

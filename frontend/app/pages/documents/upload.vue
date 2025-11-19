@@ -101,7 +101,10 @@ import type { DocumentMetadata } from '~/types/api'
 definePageMeta({
   title: 'Upload Documents',
   description: 'Upload new documents to your organization library',
-  requiresAuth: true,
+  middleware: 'auth',
+  auth: {
+    roles: ['admin', 'editor']
+  },
   layout: 'default',
 })
 
