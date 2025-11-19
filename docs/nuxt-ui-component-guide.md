@@ -1,8 +1,10 @@
 # Nuxt UI Component Guide
 
 **Last Updated:** 2025-11-18
-**Nuxt UI Version:** v3/v4
+**Nuxt UI Version:** v4 (migrated from v3 on 2025-11-18)
 **Purpose:** Project-specific guide for type-safe Nuxt UI component usage
+
+> **Note:** This project is currently running Nuxt UI v4 and Nuxt 4. The migration notes and v3 references in this guide are preserved for historical context and to help understand the evolution of component patterns. All examples show the current v4 patterns unless explicitly marked as v3.
 
 This guide documents the specific patterns and best practices for using Nuxt UI components in the Org Archivist frontend. It focuses on type-safe usage and common pitfalls discovered during development.
 
